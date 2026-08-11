@@ -1,0 +1,13 @@
+{
+  "name": "mutual-visibility-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace tooling for the mutual astronomical visibility web project",
+  "packageManager": "npm@11.16.0",
+  "workspaces": [
+    "frontend"
+  ],
+  "engines": {
+    "node": ">=24.18.0 <25"
+  }
+}
