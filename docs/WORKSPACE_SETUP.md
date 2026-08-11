@@ -4,71 +4,85 @@
 
 | 도구 | 기준 | 목적 |
 |---|---:|---|
-| Git for Windows | 2.55 이상 | 버전관리 및 원격 저장소 연결 |
-| uv | 0.11 이상 | Python 설치, 가상환경, 잠금파일 관리 |
+| Git for Windows | 2.55 이상 | 버전관리와 GitHub 연결 |
+| uv | 0.11 이상 | Python·가상환경·잠금파일 관리 |
 | Python | 3.14.x | Astropy/FastAPI 런타임 |
-| Node.js | 24.x LTS | React/Vite 빌드 및 npm |
-| VS Code | 현재 설치본 | 편집기 및 권장 확장 사용 |
+| Node.js | 24.x LTS | React/Vite 개발과 빌드 |
+| npm | 11.x | 프런트엔드 잠금파일 관리 |
 
-## 2. 백엔드 환경
+## 2. 새 환경 준비
 
-새 PowerShell에서 먼저 작업공간 도구 경로를 현재 세션에 적용합니다. 이 스크립트는 사용자 또는 시스템 PATH를 영구 변경하지 않습니다.
+새 PowerShell에서 저장소 루트로 이동한 뒤 환경 스크립트를 적용합니다. 저장소 내부의 로컬 Node 런타임이 있으면 우선 사용하고, 없으면 시스템에 설치된 Node.js를 사용합니다. 사용자 또는 시스템 PATH를 영구 변경하지 않습니다.
 
 ```powershell
 . .\scripts\activate.ps1
-```
-
-그다음 다음 명령을 실행합니다.
-
-```powershell
-Set-Location backend
-uv sync
-```
-
-기본 동기화는 API/천문 계산 런타임과 개발 도구만 설치합니다.
-
-```powershell
-uv sync --group catalog   # SIMBAD/VizieR/Gaia 접근을 시작할 때
-uv sync --group research  # 과거 PNG/MP4 산출을 재현할 때만
-```
-
-`uv.lock`은 모든 환경에서 같은 해석 결과를 사용하도록 Git에 포함합니다. `.venv`와 다운로드 캐시는 포함하지 않습니다.
-
-## 3. 프런트엔드 환경
-
-저장소 루트에서 실행합니다.
-
-```powershell
+uv python install 3.14
+uv sync --project backend --locked
 npm ci
 ```
 
-이 단계는 패키지 잠금파일과 `node_modules`만 준비합니다. UI 소스 스캐폴딩은 구현 단계에서 `frontend` 안에 생성합니다.
+`backend/uv.lock`과 루트 `package-lock.json`은 반드시 Git에 포함합니다. `backend/.venv`, `node_modules`, 다운로드 캐시는 포함하지 않습니다.
 
-배포 환경에서는 개발 의존성을 제외하고 잠금 상태를 검증합니다.
+## 3. 개발 서버
+
+터미널 1에서 API를 실행합니다.
+
+```powershell
+. .\scripts\activate.ps1
+npm run dev:api
+```
+
+터미널 2에서 웹 앱을 실행합니다.
+
+```powershell
+. .\scripts\activate.ps1
+npm run dev
+```
+
+Vite는 개발 중 `/api` 요청을 `http://127.0.0.1:8000`으로 전달합니다. API 상태 확인은 `http://127.0.0.1:8000/health`, OpenAPI 문서는 `http://127.0.0.1:8000/docs`를 사용합니다.
+
+## 4. 검증
+
+```powershell
+npm run check
+```
+
+이 명령은 Ruff lint·format 확인, Pytest, ESLint, Vitest, TypeScript/Vite 프로덕션 빌드를 차례로 실행합니다. 개별 명령은 루트 `package.json`의 `lint:*`, `test:*`, `build` 스크립트를 사용할 수 있습니다.
+
+## 5. 선택 의존성
+
+기본 동기화에는 웹 API와 계산에 필요한 패키지만 포함합니다.
+
+```powershell
+uv sync --project backend --group catalog   # 이후 SIMBAD/VizieR/Gaia 연동용
+uv sync --project backend --group research  # 과거 PNG/MP4 재현용
+```
+
+배포 빌드에서는 개발 의존성을 제외하고 잠금 상태를 검증합니다.
 
 ```powershell
 uv sync --project backend --locked --no-dev
 ```
 
-## 4. 환경 변수
+## 6. 환경 변수와 생성물
 
-애플리케이션 구현이 시작되면 `.env.example`을 `.env`로 복사합니다. `.env`는 Git에서 제외됩니다. 비밀 토큰, 카탈로그 API 키, 배포 자격증명을 `.env.example`이나 소스에 기록하지 않습니다.
-
-## 5. 생성물과 캐시
+필요할 때 `.env.example`을 `.env`로 복사하고 로컬 값만 변경합니다. `.env`, 토큰, 인증서, 개인키는 Git에 추가하지 않습니다. 기본 CORS 허용 주소는 로컬 Vite 서버입니다. 웹과 API를 분리 배포할 때는 `VITE_API_BASE_URL`을 API 공개 주소로, `CORS_ORIGINS`를 웹 공개 주소로 지정합니다.
 
 다음 경로는 재생성 가능하거나 기기별 상태이므로 Git에서 제외됩니다.
 
-- `.venv/`, `node_modules/`, `.cache/`, `.astropy/`
+- `.tools/`, `backend/.venv/`, `node_modules/`, `.cache/`, `.astropy/`
 - `products/`, `plots/`, `frontend/dist/`
 - `.env` 및 인증서·개인키 파일
 
-`image.png`는 기존 자료이며 용도가 확정되지 않았으므로 이동하거나 무시하지 않습니다.
+`references_2026`와 루트 `image.png`는 기존 연구 자료이므로 자동 포맷·이동·삭제하지 않습니다.
 
-## 6. Git 초기화 이후 검증
+## 7. Git과 배포
+
+로컬 `main`은 GitHub의 `origin/main`을 추적합니다. 작업 전후에는 다음을 확인합니다.
 
 ```powershell
 git status --short --branch
-git check-ignore -v .env products/example.csv frontend/node_modules/example
+git diff --check
 ```
 
-첫 커밋과 원격 연결 전에는 저장소 로컬 범위의 `user.name`, `user.email`과 원격 제공자/저장소 공개 범위를 먼저 확정합니다.
+CI는 동일한 잠금파일로 백엔드와 프런트엔드를 검증합니다. 실제 서비스 배포에는 Python/Astropy API를 실행할 호스팅과 프런트엔드의 API 주소·CORS 설정이 함께 필요합니다.

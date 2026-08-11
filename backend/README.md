@@ -1,13 +1,39 @@
-# Backend workspace
+# Mutual Visibility API
 
-This directory owns the future FastAPI service and the reusable Astropy-based calculation layer.
+두 관측지와 고정 ICRS 카탈로그 천체를 받아 UTC 시간축의 기하학적 AltAz 고도를 계산하는 FastAPI 서비스입니다.
 
-The base dependency set is intentionally small. Catalog access (`astroquery`) and historical plotting/video dependencies are isolated in optional dependency groups so they do not automatically enlarge the production runtime.
+## 실행
+
+저장소 루트에서 다음을 실행합니다.
 
 ```powershell
-uv sync
-uv sync --group catalog
-uv sync --group research
+. .\scripts\activate.ps1
+uv sync --project backend --locked
+npm run dev:api
 ```
 
-No API endpoint or calculation module has been created yet.
+OpenAPI 문서는 `http://127.0.0.1:8000/docs`에서 볼 수 있습니다.
+
+## 엔드포인트
+
+- `GET /health`: 서비스 상태
+- `GET /api/v1/targets`: 현재 지원하는 카탈로그 천체
+- `POST /api/v1/visibility/altitude-series`: 두 위치의 시간–고도 계열과 동시 가시 샘플 계산
+
+요청은 서로 다른 ID를 가진 위치 정확히 두 개, 시간창, 샘플 간격, 최소 고도, 대상 ID를 받습니다. 최대 2,000개 시간 샘플로 제한하며 알 수 없는 필드·대상, 중복 ID, 범위를 벗어난 좌표를 거부합니다.
+
+## 과학적 경계
+
+좌표는 ICRS에서 AltAz로 변환하고 동쪽 경도를 양수로 사용합니다. 고도는 대기 굴절을 적용하지 않은 기하학적 값입니다. `simultaneous_mask`는 두 위치의 고도가 같은 샘플에서 임계값 이상인지 나타내며, `visible_intervals`는 연속된 참 샘플을 묶은 결과입니다.
+
+요청 처리 중 IERS 네트워크 다운로드는 비활성화되어 있습니다. 현재 결과에는 밝기, 낮/밤, 달, 날씨, 지형, 장비 제한이 포함되지 않습니다.
+
+## 검증
+
+```powershell
+uv run --project backend ruff check backend/app backend/tests
+uv run --project backend ruff format --check backend/app backend/tests
+uv run --project backend pytest backend/tests -q
+```
+
+테스트에는 API 검증, 위치 순서 교환 불변성, 경도 정규화, `references_2026` 기준 시각의 고도 golden fixture가 포함됩니다.

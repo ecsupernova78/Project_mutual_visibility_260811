@@ -7,7 +7,16 @@ $NodeExecutable = Join-Path $NodeHome 'node.exe'
 $NpmExecutable = Join-Path $NodeHome 'npm.cmd'
 
 if (-not (Test-Path -LiteralPath $NodeExecutable) -or -not (Test-Path -LiteralPath $NpmExecutable)) {
-    throw "Workspace Node.js runtime is missing at $NodeHome"
+    $NodeCommand = Get-Command node -ErrorAction SilentlyContinue
+    $NpmCommand = Get-Command npm -ErrorAction SilentlyContinue
+    if ($null -eq $NodeCommand -or $null -eq $NpmCommand) {
+        throw 'Node.js 24 LTS and npm are not installed or could not be located.'
+    }
+    $NodeExecutable = $NodeCommand.Source
+    $NpmExecutable = $NpmCommand.Source
+    $NodePath = Split-Path -Parent $NodeExecutable
+} else {
+    $NodePath = $NodeHome
 }
 
 $GitCommand = Get-Command git -ErrorAction SilentlyContinue
@@ -29,7 +38,7 @@ if ($null -eq $UvCommand) {
 }
 
 $PathEntries = @()
-foreach ($entry in @($NodeHome,(Split-Path -Parent $GitExecutable))) {
+foreach ($entry in @($NodePath,(Split-Path -Parent $GitExecutable))) {
     if ($env:Path -notlike "*$entry*") {
         $PathEntries += $entry
     }
