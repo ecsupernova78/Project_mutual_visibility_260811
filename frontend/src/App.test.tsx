@@ -114,6 +114,17 @@ describe('상호 가시성 인터페이스', () => {
       '#common-visibility-overview',
     )
     expect(screen.getByText('동시 관측 가능', { selector: '.target-result-topline' })).toBeInTheDocument()
+    const targetCard = screen.getByRole('tab', { name: /3C123/ })
+    expect(within(targetCard).getByText('시간창 내 최장 공통 가시 구간')).toBeInTheDocument()
+    expect(within(targetCard).getByText('15분')).toBeInTheDocument()
+    const detailPanel = screen.getByRole('tabpanel', { name: '3C123 고도 그래프' })
+    const durationMetric = within(detailPanel)
+      .getByText('시간창 내 최장 공통 가시 구간')
+      .closest('.duration-metric')
+    expect(durationMetric).toHaveTextContent('15분')
+    expect(durationMetric).toHaveTextContent('샘플 기준')
+    expect(durationMetric).toHaveTextContent('창 경계 도달 · 창 밖은 미계산')
+    expect(detailPanel).toHaveTextContent('샘플 사이 모든 순간의 연속 가시성을 보장하지 않으며')
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
     const [url, init] = fetchMock.mock.calls[0]
@@ -175,6 +186,41 @@ describe('상호 가시성 인터페이스', () => {
     expect(within(overview as HTMLElement).getByText('3C123', { selector: '.legend-item' })).toBeInTheDocument()
     expect(within(overview as HTMLElement).queryByText('3C273', { selector: '.legend-item' })).not.toBeInTheDocument()
     expect(within(overview as HTMLElement).getByText('1개 천체')).toBeInTheDocument()
+  })
+
+  it('가시 구간이 샘플 하나뿐이면 지속시간을 과장하지 않는다', async () => {
+    const user = userEvent.setup()
+    const singleSampleResponse = {
+      ...responseBody,
+      targets: responseBody.targets.map((target) => ({
+        ...target,
+        simultaneous_mask: [false, true, false],
+        visible_intervals: [
+          {
+            ...target.visible_intervals[0],
+            end_time_utc: target.visible_intervals[0].start_time_utc,
+            end_index: 1,
+            sample_count: 1,
+          },
+        ],
+      })),
+    }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(singleSampleResponse), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+
+    const targetCard = await screen.findByRole('tab', { name: /3C123/ })
+    expect(targetCard).toHaveTextContent('단일 샘플')
+    expect(targetCard).toHaveTextContent('지속시간 미확정')
+    const detailPanel = screen.getByRole('tabpanel', { name: '3C123 고도 그래프' })
+    expect(detailPanel.querySelector('.duration-metric')).toHaveTextContent('단일 샘플')
+    expect(detailPanel.querySelector('.duration-metric')).toHaveTextContent('지속시간 미확정')
   })
 
   it('시간창에는 가시 천체가 있어도 중심 시각에 없으면 빈 개요를 표시한다', async () => {

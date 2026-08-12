@@ -9,6 +9,10 @@ import type {
   VisibilityResponse,
   VisibilityTarget,
 } from './types'
+import {
+  getLongestCommonVisibility,
+  VISIBILITY_DURATION_NOTE,
+} from './visibilityDuration'
 
 interface CatalogTarget {
   id: string
@@ -314,14 +318,30 @@ function EmptyState({
 
 function TargetResultCard({
   target,
+  stepMinutes,
+  sampleCount,
   selected,
   onSelect,
 }: {
   target: VisibilityTarget
+  stepMinutes: number
+  sampleCount: number
   selected: boolean
   onSelect: () => void
 }) {
   const alias = target.aliases.find((value) => value !== target.name)
+  const longestVisibility = getLongestCommonVisibility(
+    target.visible_intervals,
+    stepMinutes,
+    sampleCount,
+  )
+  const durationLabel = longestVisibility?.label ?? '—'
+  const durationQualifier = longestVisibility
+    ? [
+        longestVisibility.label === '단일 샘플' ? '지속시간 미확정' : null,
+        longestVisibility.boundaryLabel,
+      ].filter(Boolean).join(' · ')
+    : null
   return (
     <button
       type="button"
@@ -339,6 +359,15 @@ function TargetResultCard({
         {target.visible_intervals.length}개 샘플 묶음
         <i aria-hidden="true" />
         최고 공통 고도 {target.max_common_altitude_deg?.toFixed(1) ?? '—'}°
+      </span>
+      <span
+        className="target-duration-metric"
+        title={VISIBILITY_DURATION_NOTE}
+        aria-describedby="target-duration-note"
+      >
+        <span>시간창 내 최장 공통 가시 구간</span>
+        <strong>{durationLabel}</strong>
+        <small>샘플 기준{durationQualifier ? ` · ${durationQualifier}` : ''}</small>
       </span>
       {alias && <span className="target-alias">{alias}</span>}
     </button>
@@ -375,6 +404,19 @@ function Results({
     )
   }
 
+  const longestVisibility = getLongestCommonVisibility(
+    target.visible_intervals,
+    response.metadata.step_minutes,
+    response.times_utc.length,
+  )
+  const durationLabel = longestVisibility?.label ?? '—'
+  const durationQualifier = longestVisibility
+    ? [
+        longestVisibility.label === '단일 샘플' ? '지속시간 미확정' : null,
+        longestVisibility.boundaryLabel,
+      ].filter(Boolean).join(' · ')
+    : null
+
   return (
     <div className="results-content">
       <header className="results-header">
@@ -400,11 +442,17 @@ function Results({
           <TargetResultCard
             key={candidate.id}
             target={candidate}
+            stepMinutes={response.metadata.step_minutes}
+            sampleCount={response.times_utc.length}
             selected={candidate.id === target.id}
             onSelect={() => onSelect(candidate.id)}
           />
         ))}
       </div>
+      <p id="target-duration-note" className="target-duration-note">
+        샘플 기준: 관측 가능 시간은 연속 계산 샘플의 첫·마지막 시각 사이 경과 길이입니다.
+        샘플 사이 모든 순간의 연속 가시성을 보장하지 않습니다.
+      </p>
 
       <section className="chart-panel" role="tabpanel" aria-label={`${target.name} 고도 그래프`}>
         <header className="chart-heading">
@@ -428,6 +476,19 @@ function Results({
               <dt>최고 공통 고도</dt>
               <dd>{target.max_common_altitude_deg?.toFixed(1) ?? '—'}°</dd>
             </div>
+            <div
+              className="duration-metric"
+              title={VISIBILITY_DURATION_NOTE}
+              aria-describedby="duration-method-note"
+            >
+              <dt>시간창 내 최장 공통 가시 구간</dt>
+              <dd>
+                {durationLabel}
+                <small>
+                  샘플 기준{durationQualifier ? ` · ${durationQualifier}` : ''}
+                </small>
+              </dd>
+            </div>
           </dl>
         </header>
 
@@ -438,12 +499,14 @@ function Results({
           minimumAltitude={minimumAltitude}
         />
 
-        <div className="science-note">
+        <div id="duration-method-note" className="science-note">
           <span aria-hidden="true">i</span>
           <p>
             <strong>판정 기준</strong> 선택한 {target.location_series.length}개 관측지의 기하학적 고도가 모두 {minimumAltitude}° 이상인
-            샘플과 연속 샘플 묶음을 강조합니다. 샘플 사이 모든 순간의 가시성을 보장하지 않으며,
-            대기 굴절(pressure=0), 지형, 날씨와 일광은 반영하지 않습니다.
+            샘플과 연속 샘플 묶음을 강조합니다. 시간창 내 최장 구간은 가장 긴 묶음의 첫·마지막 샘플
+            사이 경과 길이이며, 단일 가시 샘플은 지속시간 미확정으로 표시합니다. 샘플 사이 모든
+            순간의 연속 가시성을 보장하지 않으며, 대기 굴절(pressure=0), 지형, 날씨와 일광은
+            반영하지 않습니다.
           </p>
         </div>
       </section>
