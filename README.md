@@ -57,14 +57,20 @@ LoTSS DR3에서 가져온 total/peak flux는 카탈로그 검색 결과의 정�
 
 ## LOFAR DR3 카탈로그 연계
 
-카탈로그 탭은 ASTRON의 공개 TAP 서비스에 있는 `lotss_dr3.main_sources`를 서버에서 제한된
-ADQL 템플릿으로 조회합니다. LoTSS Source ID 앞부분 또는 좌표 원뿔 검색을 지원하며, integrated flux와 peak
-flux 기준으로 정렬할 수 있습니다. 선택한 source의 ICRS 좌표 snapshot을 계산 요청에 포함하므로
-고도 계산 중에는 외부 카탈로그를 다시 조회하지 않습니다. 공개 조회에는 계정이나 API 키가
-필요하지 않습니다.
+카탈로그 탭은 ASTRON의 공개 asynchronous TAP 서비스에 있는 `lotss_dr3.main_sources`를 서버에서
+제한된 ADQL 템플릿으로 조회합니다. prefix를 비워 두면 전역 카탈로그에서 밝기 순 목록을 가져오고,
+필요하면 LoTSS Source ID 앞부분으로 범위를 좁힐 수 있습니다. integrated flux 또는 peak flux,
+정렬 방향, 표시할 결과 수를 선택할 수 있습니다. 선택한 source의 ICRS 좌표 snapshot을 계산 요청에
+포함하므로 고도 계산 중에는 외부 카탈로그를 다시 조회하지 않습니다. 공개 조회에는 계정이나 API
+키가 필요하지 않습니다.
+
+서버는 같은 검색 요청을 하나의 TAP job으로 합치고 성공 결과를 잠시 캐시합니다. 서로 다른
+upstream 검색의 동시 실행 수도 제한하며, 용량을 초과한 새 검색에는 잠시 후 재시도하도록
+안내합니다. 이 보호 상태는 API process별로 관리됩니다.
 
 - [LoTSS DR3 공개 릴리스](https://lofar-surveys.org/dr3.html)
 - [ASTRON LoTSS DR3 source table](https://vo.astron.nl/tableinfo/lotss_dr3.main_sources)
+- [ASTRON asynchronous TAP service](https://vo.astron.nl/__system__/tap/run/tap/async)
 
 ## 구조
 

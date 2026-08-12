@@ -10,7 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.catalog import TARGETS
-from app.lotss_dr3 import LofarCatalogError, LofarCatalogTimeout, LofarSearch, search_sources
+from app.lotss_dr3 import (
+    LofarCatalogBusy,
+    LofarCatalogError,
+    LofarCatalogTimeout,
+    LofarSearch,
+    catalog_query_coordinator,
+)
 from app.models import (
     HealthResponse,
     LofarSearchParameters,
@@ -73,27 +79,28 @@ def list_targets() -> TargetCatalogResponse:
     response_model=LofarSearchResponse,
     tags=["catalog"],
 )
-def search_lotss_dr3_sources(
+async def search_lotss_dr3_sources(
     params: Annotated[LofarSearchParameters, Query()],
 ) -> LofarSearchResponse:
-    """Search the public LoTSS DR3 source table through a restricted TAP adapter."""
+    """Browse the public LoTSS DR3 source table through a restricted async TAP adapter."""
 
     try:
-        return search_sources(
+        return await catalog_query_coordinator.search(
             LofarSearch(
-                mode=params.mode,
-                query=params.query,
-                ra_deg=params.ra_deg,
-                dec_deg=params.dec_deg,
-                radius_arcmin=params.radius_arcmin,
+                source_prefix=params.source_prefix,
                 sort_by=params.sort_by,
                 sort_direction=params.sort_direction,
-                page=params.page,
-                page_size=params.page_size,
+                limit=params.limit,
             )
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except LofarCatalogBusy as error:
+        raise HTTPException(
+            status_code=429,
+            detail="LOFAR DR3 검색 요청이 많습니다. 잠시 후 다시 시도해 주세요.",
+            headers={"Retry-After": "5"},
+        ) from error
     except LofarCatalogTimeout as error:
         raise HTTPException(
             status_code=504,

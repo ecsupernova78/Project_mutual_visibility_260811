@@ -21,28 +21,27 @@ export interface LofarSource {
   peak_flux_mjy: number | null
 }
 
-export type LofarQueryMode = 'name' | 'cone'
 export type LofarSortField = 'total_flux' | 'peak_flux'
 export type SortDirection = 'desc' | 'asc'
 
 export interface LofarSearchParams {
-  mode: LofarQueryMode
-  query?: string
-  ra_deg?: number
-  dec_deg?: number
-  radius_arcmin?: number
+  source_prefix?: string
   sort_by: LofarSortField
   sort_direction: SortDirection
-  page: number
-  page_size: number
+  limit: number
 }
 
 export interface LofarSearchResponse {
   catalog: CatalogName
-  query_mode: LofarQueryMode
-  page: number
-  page_size: number
-  has_more: boolean
+  catalog_release: string
+  coordinate_frame: 'icrs'
+  reference_frequency_mhz: number
+  tap_mode: 'async'
+  sort_by: LofarSortField
+  sort_direction: SortDirection
+  limit: number
+  source_prefix: string | null
+  result_count: number
   sources: LofarSource[]
 }
 

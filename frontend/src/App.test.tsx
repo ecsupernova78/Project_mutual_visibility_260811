@@ -175,10 +175,15 @@ describe('상호 가시성 인터페이스', () => {
       if (url.startsWith('/api/v1/catalogs/lotss-dr3/sources')) {
         return new Response(JSON.stringify({
           catalog: 'lofar_dr3',
-          query_mode: 'name',
-          page: 1,
-          page_size: 20,
-          has_more: false,
+          catalog_release: 'LoTSS DR3 v1.0',
+          coordinate_frame: 'icrs',
+          reference_frequency_mhz: 144,
+          tap_mode: 'async',
+          sort_by: 'total_flux',
+          sort_direction: 'desc',
+          limit: 100,
+          source_prefix: 'ILTJ1234',
+          result_count: 1,
           sources: [source],
         }), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
@@ -196,8 +201,8 @@ describe('상호 가시성 인터페이스', () => {
     await user.click(catalogTab)
     expect(catalogTab).toHaveAttribute('aria-selected', 'true')
 
-    await user.type(screen.getByLabelText('Source ID 앞 8자 이상'), 'ILTJ1234')
-    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 검색' }))
+    await user.type(screen.getByLabelText('Source ID 앞부분 (선택)'), 'ILTJ1234')
+    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
     const sourceCheckbox = await screen.findByRole('checkbox', {
       name: `${source.name} 계산 대상에 추가`,
     })
@@ -205,10 +210,10 @@ describe('상호 가시성 인터페이스', () => {
 
     const searchUrl = String(fetchMock.mock.calls[0][0])
     const searchParams = new URL(searchUrl, 'http://localhost').searchParams
-    expect(searchParams.get('mode')).toBe('name')
-    expect(searchParams.get('query')).toBe('ILTJ1234')
+    expect(searchParams.get('source_prefix')).toBe('ILTJ1234')
     expect(searchParams.get('sort_by')).toBe('total_flux')
     expect(searchParams.get('sort_direction')).toBe('desc')
+    expect(searchParams.get('limit')).toBe('100')
 
     await user.click(sourceCheckbox)
     expect(sourceCheckbox).toBeChecked()
@@ -237,23 +242,34 @@ describe('상호 가시성 인터페이스', () => {
     }])
 
     await user.click(screen.getByRole('tab', { name: /LOFAR DR3 카탈로그/ }))
-    expect(screen.getByLabelText('Source ID 앞 8자 이상')).toHaveValue('ILTJ1234')
+    expect(screen.getByLabelText('Source ID 앞부분 (선택)')).toHaveValue('ILTJ1234')
     expect(screen.getByRole('checkbox', { name: `${source.name} 계산 대상에서 제거` })).toBeChecked()
   })
 
-  it('LOFAR Source ID가 8자보다 짧으면 브라우저 검증에서 검색 요청을 막는다', async () => {
+  it('Source ID prefix를 비워 두면 전체 카탈로그 TOP 목록을 요청한다', async () => {
     const user = userEvent.setup()
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      catalog: 'lofar_dr3',
+      catalog_release: 'LoTSS DR3 v1.0',
+      coordinate_frame: 'icrs',
+      reference_frequency_mhz: 144,
+      tap_mode: 'async',
+      sort_by: 'total_flux',
+      sort_direction: 'desc',
+      limit: 100,
+      source_prefix: null,
+      result_count: 0,
+      sources: [],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     render(<App />)
 
     await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 카탈로그' }))
-    const query = screen.getByLabelText('Source ID 앞 8자 이상')
-    await user.type(query, 'ILTJ123')
-    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 검색' }))
+    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('8자 이상')
-    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(await screen.findByText('일치하는 천체가 없습니다.')).toBeInTheDocument()
+    const searchParams = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost').searchParams
+    expect(searchParams.has('source_prefix')).toBe(false)
+    expect(searchParams.get('limit')).toBe('100')
   })
 
   it('기본 천체와 LOFAR 천체 합계가 25개를 넘지 않도록 모든 추가 경로를 막는다', async () => {
@@ -272,18 +288,23 @@ describe('상호 가시성 인터페이스', () => {
     }))
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       catalog: 'lofar_dr3',
-      query_mode: 'name',
-      page: 1,
-      page_size: 50,
-      has_more: false,
+      catalog_release: 'LoTSS DR3 v1.0',
+      coordinate_frame: 'icrs',
+      reference_frequency_mhz: 144,
+      tap_mode: 'async',
+      sort_by: 'total_flux',
+      sort_direction: 'desc',
+      limit: 100,
+      source_prefix: 'ILTJ1234',
+      result_count: sources.length,
       sources,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: '전체 해제' }))
     await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 카탈로그' }))
-    await user.type(screen.getByLabelText('Source ID 앞 8자 이상'), 'ILTJ1234')
-    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 검색' }))
+    await user.type(screen.getByLabelText('Source ID 앞부분 (선택)'), 'ILTJ1234')
+    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
     const sourceChecks = await screen.findAllByRole('checkbox', { name: /계산 대상에 추가/ })
     expect(sourceChecks).toHaveLength(25)
     for (const checkbox of sourceChecks) await user.click(checkbox)

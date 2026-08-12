@@ -59,8 +59,11 @@ uv sync --project backend --group research  # 과거 PNG/MP4 재현용
 ```
 
 운영 중인 LoTSS DR3 검색은 기본 API 의존성으로 설치되며 별도 그룹이 필요하지 않습니다. 외부
-조회 시간 제한과 최대 행 수는 `.env.example`의 `CATALOG_REQUEST_TIMEOUT_SECONDS`,
-`CATALOG_MAX_ROWS`를 기준으로 배포 환경에서 조정합니다.
+HTTP 요청 한 번의 제한시간과 asynchronous TAP job 전체 제한시간은 `.env.example`의
+`CATALOG_REQUEST_TIMEOUT_SECONDS`, `CATALOG_JOB_TIMEOUT_SECONDS`를 기준으로 배포 환경에서
+조정합니다. `CATALOG_CACHE_TTL_SECONDS`는 process-local 성공 응답 cache의 초 단위 TTL,
+`CATALOG_MAX_CONCURRENT_JOBS`는 process마다 동시에 실행할 서로 다른 TAP job의 수(1~4)를
+제어합니다. 조회 행 수는 API가 허용하는 선택값 중 최대 1,000개로 고정 제한됩니다.
 
 배포 빌드에서는 개발 의존성을 제외하고 잠금 상태를 검증합니다.
 
@@ -72,8 +75,8 @@ uv sync --project backend --locked --no-dev
 
 `.env.example`은 지원 설정의 값과 이름을 보여 주는 템플릿입니다. 현재 개발 명령은 루트 `.env`를
 자동으로 읽지 않으므로 로컬 override는 PowerShell process 환경 변수로 지정합니다. 예를 들어
-`$env:CATALOG_REQUEST_TIMEOUT_SECONDS='30'` 또는 `$env:CORS_ORIGINS='https://web.example'`를
-설정한 터미널에서 API를 시작합니다. 프런트 API 주소는 `frontend/.env.local`의
+`$env:CATALOG_JOB_TIMEOUT_SECONDS='120'` 또는 `$env:CORS_ORIGINS='https://web.example'`를 설정한
+터미널에서 API를 시작합니다. 프런트 API 주소는 `frontend/.env.local`의
 `VITE_API_BASE_URL`로 지정할 수 있습니다. `.env`, `.env.local`, 토큰, 인증서, 개인키는 Git에
 추가하지 않습니다. 기본 CORS 허용 주소는 로컬 Vite 서버입니다.
 

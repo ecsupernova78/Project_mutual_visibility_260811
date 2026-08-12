@@ -65,20 +65,13 @@ export async function searchLofarSources(
   signal?: AbortSignal,
 ): Promise<LofarSearchResponse> {
   const query = new URLSearchParams({
-    mode: params.mode,
     sort_by: params.sort_by,
     sort_direction: params.sort_direction,
-    page: String(params.page),
-    page_size: String(params.page_size),
+    limit: String(params.limit),
   })
 
-  if (params.mode === 'name') {
-    query.set('query', params.query ?? '')
-  } else {
-    query.set('ra_deg', String(params.ra_deg))
-    query.set('dec_deg', String(params.dec_deg))
-    query.set('radius_arcmin', String(params.radius_arcmin))
-  }
+  const sourcePrefix = params.source_prefix?.trim()
+  if (sourcePrefix) query.set('source_prefix', sourcePrefix)
 
   let response: Response
   try {

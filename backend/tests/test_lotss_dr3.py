@@ -1,108 +1,91 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from copy import deepcopy
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from app.lotss_dr3 import (
+    TAP_ASYNC_URL,
+    LofarCatalogBusy,
     LofarCatalogError,
     LofarCatalogTimeout,
     LofarSearch,
     _build_adql,
-    _configured_timeout,
+    _configured_job_timeout,
+    _configured_request_timeout,
+    _request,
+    _validated_job_url,
     search_sources,
 )
 from app.models import LofarSearchResponse
 
+JOB_URL = f"{TAP_ASYNC_URL}/job-123"
+CSV_BODY = (
+    "Source_Name,RA,DEC,Total_flux,Peak_flux\n"
+    "ILTJ123400.00+450000.0,188.5,45.0,210.5,180.2\n"
+    "ILTJ123401.00+450100.0,188.5041667,45.0166667,101.25,90.0\n"
+)
+
 
 def _search(**overrides: object) -> LofarSearch:
     values = {
-        "mode": "name",
-        "query": "ILTJ1234",
-        "ra_deg": None,
-        "dec_deg": None,
-        "radius_arcmin": None,
+        "source_prefix": None,
         "sort_by": "total_flux",
         "sort_direction": "desc",
-        "page": 1,
-        "page_size": 2,
+        "limit": 100,
     }
     values.update(overrides)
     return LofarSearch(**values)  # type: ignore[arg-type]
 
 
-def test_non_finite_timeout_configuration_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+def _run_search(search: LofarSearch, handler: httpx.MockTransport) -> LofarSearchResponse:
+    async def execute() -> LofarSearchResponse:
+        async with httpx.AsyncClient(transport=handler, follow_redirects=False) as client:
+            return await search_sources(search, client=client)
+
+    return asyncio.run(execute())
+
+
+def _form(request: httpx.Request) -> dict[str, list[str]]:
+    return parse_qs(request.content.decode("utf-8"), keep_blank_values=True)
+
+
+def test_invalid_timeout_configuration_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CATALOG_REQUEST_TIMEOUT_SECONDS", "NaN")
-    assert _configured_timeout() == 20.0
+    monkeypatch.setenv("CATALOG_JOB_TIMEOUT_SECONDS", "not-a-number")
+    assert _configured_request_timeout() == 20.0
+    assert _configured_job_timeout() == 90.0
 
 
-def test_name_query_is_bounded_sorted_and_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, object] = {}
-    csv_body = (
-        "Source_Name,RA,DEC,Total_flux,Peak_flux\n"
-        "ILTJ123400.00+450000.0,188.5,45.0,210.5,180.2\n"
-        "ILTJ123401.00+450100.0,188.5041667,45.0166667,101.25,90.0\n"
-        "ILTJ123402.00+450200.0,188.5083333,45.0333333,70.0,60.0\n"
+def test_global_and_prefix_adql_are_bounded_and_whitelisted() -> None:
+    global_adql = _build_adql(_search())
+    assert global_adql == (
+        "SELECT TOP 100 Source_Name, RA, DEC, Total_flux, Peak_flux "
+        "FROM lotss_dr3.main_sources WHERE Total_flux IS NOT NULL "
+        "ORDER BY Total_flux DESC, Source_Name ASC"
     )
 
-    def fake_post(url: str, **kwargs: object) -> httpx.Response:
-        captured.update({"url": url, **kwargs})
-        return httpx.Response(200, text=csv_body, request=httpx.Request("POST", url))
-
-    monkeypatch.setattr("app.lotss_dr3.httpx.post", fake_post)
-
-    result = search_sources(_search())
-
-    assert captured["url"] == "https://vo.astron.nl/tap/sync"
-    data = captured["data"]
-    assert isinstance(data, dict)
-    assert data["FORMAT"] == "csv"
-    assert data["MAXREC"] == "3"
-    assert "FROM lotss_dr3.main_sources" in data["QUERY"]
-    assert "ivo_nocasematch(Source_Name, 'ILTJ1234%')" in data["QUERY"]
-    assert "Total_flux IS NOT NULL" in data["QUERY"]
-    assert "ORDER BY Total_flux DESC, Source_Name ASC OFFSET 0" in data["QUERY"]
-    assert result.has_more is True
-    assert len(result.sources) == 2
-    assert result.sources[0].name == "ILTJ123400.00+450000.0"
-    assert result.sources[0].id.startswith("lotss-dr3-")
-    assert result.sources[0].ra_hms == "12:34:00.00"
-    assert result.sources[0].dec_dms == "+45:00:00.00"
-    assert result.sources[0].total_flux_mjy == 210.5
-    assert result.sources[0].peak_flux_mjy == 180.2
-
-
-def test_cone_query_and_page_offset_are_server_generated() -> None:
-    adql = _build_adql(
-        _search(
-            mode="cone",
-            query=None,
-            ra_deg=12.5,
-            dec_deg=-30.25,
-            radius_arcmin=30.0,
-            sort_by="peak_flux",
-            sort_direction="asc",
-            page=2,
-            page_size=20,
-        )
-    )
-
-    assert "CIRCLE('ICRS', 12.5000000000, -30.2500000000, 0.5000000000)" in adql
-    assert "ORDER BY Peak_flux ASC, Source_Name ASC OFFSET 20" in adql
-    assert adql.startswith("SELECT TOP 21")
+    prefix_adql = _build_adql(_search(source_prefix="ILTJ1234", sort_by="peak_flux", sort_direction="asc", limit=25))
+    assert "SELECT TOP 25" in prefix_adql
+    assert "Peak_flux IS NOT NULL" in prefix_adql
+    assert "1=ivo_nocasematch(Source_Name, 'ILTJ1234%')" in prefix_adql
+    assert prefix_adql.endswith("ORDER BY Peak_flux ASC, Source_Name ASC")
 
 
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"query": "x' OR 1=1--"},
+        {"source_prefix": "x' OR 1=1--"},
+        {"source_prefix": "_"},
         {"sort_by": "Source_Name DESC; DROP TABLE"},
         {"sort_direction": "desc; DROP TABLE"},
-        {"page": 0},
-        {"page_size": 51},
-        {"mode": "cone", "query": None, "ra_deg": 360.0, "dec_deg": 0.0, "radius_arcmin": 1.0},
+        {"limit": 20},
+        {"limit": 10_000},
     ],
 )
 def test_adql_builder_defends_its_own_invariants(overrides: dict[str, object]) -> None:
@@ -110,116 +93,380 @@ def test_adql_builder_defends_its_own_invariants(overrides: dict[str, object]) -
         _build_adql(_search(**overrides))
 
 
-def test_last_allowed_page_does_not_advertise_an_unrequestable_next_page(
+def test_async_uws_lifecycle_builds_query_polls_parses_and_deletes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("CATALOG_MAX_ROWS", "1000")
-    rows = [f"ILTJ{index:014d}+000000.0,{index / 100:.2f},0,10,9" for index in range(50)]
-    csv_body = "Source_Name,RA,DEC,Total_flux,Peak_flux\n" + "\n".join(rows)
-    captured: dict[str, object] = {}
+    calls: list[tuple[str, str, dict[str, list[str]]]] = []
+    phases = iter(["PENDING", "QUEUED", "EXECUTING", "SUSPENDED", "UNKNOWN", "COMPLETED"])
 
-    def fake_post(url: str, **kwargs: object) -> httpx.Response:
-        captured.update(kwargs)
-        return httpx.Response(200, text=csv_body, request=httpx.Request("POST", url))
+    sleeps: list[float] = []
 
-    monkeypatch.setattr("app.lotss_dr3.httpx.post", fake_post)
+    async def no_sleep(delay: float) -> None:
+        sleeps.append(delay)
 
-    result = search_sources(_search(page=20, page_size=50))
+    monkeypatch.setattr("app.lotss_dr3.asyncio.sleep", no_sleep)
 
-    data = captured["data"]
-    assert isinstance(data, dict)
-    assert data["MAXREC"] == "50"
-    assert data["QUERY"].startswith("SELECT TOP 50")
-    assert result.has_more is False
+    def handler(request: httpx.Request) -> httpx.Response:
+        form = _form(request) if request.method == "POST" else {}
+        calls.append((request.method, str(request.url), form))
+        if request.method == "POST" and str(request.url) == TAP_ASYNC_URL:
+            return httpx.Response(303, headers={"Location": "job-123"})
+        if request.method == "POST" and str(request.url) == f"{JOB_URL}/phase":
+            assert form == {"PHASE": ["RUN"]}
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "GET" and str(request.url) == f"{JOB_URL}/phase":
+            return httpx.Response(200, text=next(phases))
+        if request.method == "GET" and str(request.url) == f"{JOB_URL}/results/result":
+            return httpx.Response(200, text=CSV_BODY, headers={"Content-Type": "text/csv"})
+        if request.method == "DELETE" and str(request.url) == JOB_URL:
+            return httpx.Response(303, headers={"Location": TAP_ASYNC_URL})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    result = _run_search(
+        _search(source_prefix="ILTJ1234", sort_by="peak_flux", sort_direction="asc", limit=25),
+        httpx.MockTransport(handler),
+    )
+
+    create_form = calls[0][2]
+    assert calls[0][:2] == ("POST", TAP_ASYNC_URL)
+    assert create_form["REQUEST"] == ["doQuery"]
+    assert create_form["LANG"] == ["ADQL"]
+    assert create_form["RESPONSEFORMAT"] == ["csv"]
+    assert create_form["MAXREC"] == ["25"]
+    assert "FROM lotss_dr3.main_sources" in create_form["QUERY"][0]
+    assert "ORDER BY Peak_flux ASC, Source_Name ASC" in create_form["QUERY"][0]
+    assert [method for method, _, _ in calls].count("GET") == 7
+    assert sleeps == [1.0, 2.0, 3.0, 4.0, 5.0]
+    assert calls[-1][:2] == ("DELETE", JOB_URL)
+    assert result.tap_mode == "async"
+    assert result.sort_by == "peak_flux"
+    assert result.sort_direction == "asc"
+    assert result.limit == 25
+    assert result.source_prefix == "ILTJ1234"
+    assert result.result_count == 2
+    assert result.sources[0].id.startswith("lotss-dr3-")
+    assert result.sources[0].ra_hms == "12:34:00.00"
+    assert result.sources[0].dec_dms == "+45:00:00.00"
+    assert result.sources[0].total_flux_mjy == 210.5
+    assert result.sources[0].peak_flux_mjy == 180.2
 
 
-def test_non_divisible_row_cap_only_advertises_full_requestable_pages(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("CATALOG_MAX_ROWS", "1000")
-    rows = [f"ILTJ{index:014d}+000000.0,{index / 100:.2f},0,10,9" for index in range(30)]
-    csv_body = "Source_Name,RA,DEC,Total_flux,Peak_flux\n" + "\n".join(rows)
-    captured: dict[str, object] = {}
-
-    def fake_post(url: str, **kwargs: object) -> httpx.Response:
-        captured.update(kwargs)
-        return httpx.Response(200, text=csv_body, request=httpx.Request("POST", url))
-
-    monkeypatch.setattr("app.lotss_dr3.httpx.post", fake_post)
-
-    result = search_sources(_search(page=33, page_size=30))
-
-    data = captured["data"]
-    assert isinstance(data, dict)
-    assert data["MAXREC"] == "30"
-    assert result.has_more is False
-    with pytest.raises(ValueError, match="row limit"):
-        _build_adql(_search(page=34, page_size=30))
+@pytest.mark.parametrize(
+    "location",
+    [
+        "http://vo.astron.nl/__system__/tap/run/tap/async/job",
+        "https://evil.example/__system__/tap/run/tap/async/job",
+        "https://user@vo.astron.nl/__system__/tap/run/tap/async/job",
+        "/__system__/tap/run/tap/async/job?token=secret",
+        "/__system__/tap/run/tap/async/job/child",
+        "/__system__/tap/run/tap/async/%2e%2e/sync/job",
+        "/__system__/tap/run/tap/sync/job",
+        "//evil.example/job",
+        "job#fragment",
+        "job\\child",
+        "",
+    ],
+)
+def test_job_location_must_be_one_safe_astron_async_child(location: str) -> None:
+    with pytest.raises(LofarCatalogError):
+        _validated_job_url(location)
 
 
-def test_catalog_adapter_maps_timeout_and_malformed_csv(monkeypatch: pytest.MonkeyPatch) -> None:
-    def timeout_post(*args: object, **kwargs: object) -> httpx.Response:
-        raise httpx.ReadTimeout("slow upstream")
+def test_job_location_accepts_relative_and_canonical_absolute_urls() -> None:
+    assert _validated_job_url("abc-123") == f"{TAP_ASYNC_URL}/abc-123"
+    assert _validated_job_url(f"{TAP_ASYNC_URL}/abc-123/") == f"{TAP_ASYNC_URL}/abc-123"
+    assert (
+        _validated_job_url("https://vo.astron.nl:443/__system__/tap/run/tap/async/abc-123")
+        == f"{TAP_ASYNC_URL}/abc-123"
+    )
 
-    monkeypatch.setattr("app.lotss_dr3.httpx.post", timeout_post)
+
+def test_overall_deadline_aborts_then_deletes_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str, dict[str, list[str]]]] = []
+    monotonic_values = iter([0.0, 0.0, 0.0, 0.0, 2.0])
+    monkeypatch.setattr("app.lotss_dr3._configured_job_timeout", lambda: 1.0)
+    monkeypatch.setattr("app.lotss_dr3._monotonic", lambda: next(monotonic_values))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        form = _form(request) if request.method == "POST" else {}
+        calls.append((request.method, str(request.url), form))
+        if request.method == "POST" and str(request.url) == TAP_ASYNC_URL:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "POST" and form == {"PHASE": ["RUN"]}:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "GET" and str(request.url) == f"{JOB_URL}/phase":
+            return httpx.Response(200, text="EXECUTING")
+        if request.method == "POST" and form == {"PHASE": ["ABORT"]}:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "DELETE":
+            return httpx.Response(303, headers={"Location": TAP_ASYNC_URL})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
     with pytest.raises(LofarCatalogTimeout):
-        search_sources(_search())
+        _run_search(_search(limit=10), httpx.MockTransport(handler))
 
-    def malformed_post(url: str, **kwargs: object) -> httpx.Response:
-        return httpx.Response(200, text="not,the,expected,columns\n1,2,3,4", request=httpx.Request("POST", url))
-
-    monkeypatch.setattr("app.lotss_dr3.httpx.post", malformed_post)
-    with pytest.raises(LofarCatalogError, match="columns"):
-        search_sources(_search())
+    assert calls[-2] == ("POST", f"{JOB_URL}/phase", {"PHASE": ["ABORT"]})
+    assert calls[-1][:2] == ("DELETE", JOB_URL)
 
 
-def test_catalog_endpoint_validates_query_contract(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "app.main.search_sources",
-        lambda search: LofarSearchResponse(
-            query_mode=search.mode,
-            page=search.page,
-            page_size=search.page_size,
-            has_more=False,
+def test_upstream_timeout_maps_to_catalog_timeout_and_cleans_up() -> None:
+    calls: list[tuple[str, str, dict[str, list[str]]]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        form = _form(request) if request.method == "POST" else {}
+        calls.append((request.method, str(request.url), form))
+        if request.method == "POST" and str(request.url) == TAP_ASYNC_URL:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "POST" and form == {"PHASE": ["RUN"]}:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "GET":
+            raise httpx.ReadTimeout("slow upstream", request=request)
+        if request.method == "POST" and form == {"PHASE": ["ABORT"]}:
+            return httpx.Response(303)
+        if request.method == "DELETE":
+            return httpx.Response(303)
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    with pytest.raises(LofarCatalogTimeout):
+        _run_search(_search(limit=10), httpx.MockTransport(handler))
+    assert calls[-2][2] == {"PHASE": ["ABORT"]}
+    assert calls[-1][:2] == ("DELETE", JOB_URL)
+
+
+def test_cancelled_search_aborts_then_deletes_created_job() -> None:
+    calls: list[tuple[str, str, dict[str, list[str]]]] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        form = _form(request) if request.method == "POST" else {}
+        calls.append((request.method, str(request.url), form))
+        if request.method == "POST" and str(request.url) == TAP_ASYNC_URL:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "POST" and form == {"PHASE": ["RUN"]}:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "GET" and str(request.url) == f"{JOB_URL}/phase":
+            phase_requested.set()
+            await hold_phase.wait()
+            return httpx.Response(200, text="EXECUTING")
+        if request.method == "POST" and form == {"PHASE": ["ABORT"]}:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "DELETE" and str(request.url) == JOB_URL:
+            return httpx.Response(303, headers={"Location": TAP_ASYNC_URL})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    async def execute() -> None:
+        nonlocal phase_requested, hold_phase
+        phase_requested = asyncio.Event()
+        hold_phase = asyncio.Event()
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=False) as client:
+            search_task = asyncio.create_task(search_sources(_search(limit=10), client=client))
+            await phase_requested.wait()
+            search_task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await search_task
+
+    phase_requested: asyncio.Event
+    hold_phase: asyncio.Event
+    asyncio.run(execute())
+
+    assert calls[-2] == ("POST", f"{JOB_URL}/phase", {"PHASE": ["ABORT"]})
+    assert calls[-1] == ("DELETE", JOB_URL, {})
+
+
+@pytest.mark.parametrize("terminal_phase", ["ERROR", "ABORTED", "HELD", "ARCHIVED", "BOGUS"])
+def test_non_successful_job_phases_are_controlled_errors(terminal_phase: str) -> None:
+    deleted = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal deleted
+        form = _form(request) if request.method == "POST" else {}
+        if request.method == "POST" and str(request.url) == TAP_ASYNC_URL:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "POST" and form == {"PHASE": ["RUN"]}:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "GET":
+            return httpx.Response(200, text=terminal_phase)
+        if request.method == "POST" and form == {"PHASE": ["ABORT"]}:
+            return httpx.Response(303)
+        if request.method == "DELETE":
+            deleted = True
+            return httpx.Response(303)
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    with pytest.raises(LofarCatalogError):
+        _run_search(_search(limit=10), httpx.MockTransport(handler))
+    assert deleted is True
+
+
+def test_result_redirect_is_followed_only_on_astron_and_delete_failure_is_nonfatal(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    result_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal result_requests
+        form = _form(request) if request.method == "POST" else {}
+        if request.method == "POST" and str(request.url) == TAP_ASYNC_URL:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "POST" and form == {"PHASE": ["RUN"]}:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "GET" and str(request.url) == f"{JOB_URL}/phase":
+            return httpx.Response(200, text="COMPLETED")
+        if request.method == "GET" and str(request.url) == f"{JOB_URL}/results/result":
+            result_requests += 1
+            return httpx.Response(303, headers={"Location": "file.csv"})
+        if request.method == "GET" and str(request.url) == f"{JOB_URL}/results/file.csv":
+            result_requests += 1
+            return httpx.Response(200, text=CSV_BODY)
+        if request.method == "DELETE":
+            raise httpx.ConnectError("cleanup failed", request=request)
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    with caplog.at_level(logging.WARNING, logger="app.lotss_dr3"):
+        result = _run_search(_search(limit=10), httpx.MockTransport(handler))
+    assert result.result_count == 2
+    assert result_requests == 2
+    assert "job deletion failed" in caplog.text
+
+
+def test_overall_deadline_wraps_an_indefinitely_blocked_http_operation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.lotss_dr3._monotonic", lambda: 0.0)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    async def execute() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(LofarCatalogTimeout):
+                await _request(client, "GET", TAP_ASYNC_URL, 0.01)
+
+    asyncio.run(execute())
+
+
+def test_foreign_result_redirect_is_rejected_and_job_is_deleted() -> None:
+    deleted = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal deleted
+        if request.method == "POST" and str(request.url) == TAP_ASYNC_URL:
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "POST":
+            return httpx.Response(303, headers={"Location": JOB_URL})
+        if request.method == "GET" and str(request.url) == f"{JOB_URL}/phase":
+            return httpx.Response(200, text="COMPLETED")
+        if request.method == "GET":
+            return httpx.Response(303, headers={"Location": "https://evil.example/result.csv"})
+        if request.method == "DELETE":
+            deleted = True
+            return httpx.Response(303)
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    with pytest.raises(LofarCatalogError, match="unsafe redirect"):
+        _run_search(_search(limit=10), httpx.MockTransport(handler))
+    assert deleted is True
+
+
+def test_malformed_or_oversized_catalog_result_is_rejected() -> None:
+    too_many_rows = "Source_Name,RA,DEC,Total_flux,Peak_flux\n" + "\n".join(
+        f"ILTJ{index:014d}+000000.0,{index / 100:.2f},0,10,9" for index in range(11)
+    )
+    for result_body in (
+        "not,the,expected,columns\n1,2,3,4",
+        too_many_rows,
+    ):
+
+        def handler(request: httpx.Request, body: str = result_body) -> httpx.Response:
+            form = _form(request) if request.method == "POST" else {}
+            if request.method == "POST" and str(request.url) == TAP_ASYNC_URL:
+                return httpx.Response(303, headers={"Location": JOB_URL})
+            if request.method == "POST" and form == {"PHASE": ["RUN"]}:
+                return httpx.Response(303, headers={"Location": JOB_URL})
+            if request.method == "GET" and str(request.url) == f"{JOB_URL}/phase":
+                return httpx.Response(200, text="COMPLETED")
+            if request.method == "GET":
+                return httpx.Response(200, text=body)
+            if request.method == "DELETE":
+                return httpx.Response(303)
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        with pytest.raises(LofarCatalogError):
+            _run_search(_search(limit=10), httpx.MockTransport(handler))
+
+
+def test_catalog_endpoint_defaults_to_global_async_browse(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[LofarSearch] = []
+
+    async def fake_search(search: LofarSearch) -> LofarSearchResponse:
+        captured.append(search)
+        return LofarSearchResponse(
+            sort_by=search.sort_by,
+            sort_direction=search.sort_direction,
+            limit=search.limit,
+            source_prefix=search.source_prefix,
+            result_count=0,
             sources=[],
-        ),
-    )
+        )
 
-    response = client.get(
-        "/api/v1/catalogs/lotss-dr3/sources",
-        params={"mode": "name", "query": "ILTJ1234", "sort_by": "total_flux", "sort_direction": "desc"},
-    )
+    monkeypatch.setattr("app.main.catalog_query_coordinator.search", fake_search)
+
+    response = client.get("/api/v1/catalogs/lotss-dr3/sources", params={"source_prefix": "   "})
     assert response.status_code == 200
-    assert response.json()["catalog"] == "lofar_dr3"
+    assert captured == [LofarSearch(source_prefix=None, sort_by="total_flux", sort_direction="desc", limit=100)]
+    assert response.json() == {
+        "catalog": "lofar_dr3",
+        "catalog_release": "LoTSS DR3 v1.0",
+        "coordinate_frame": "icrs",
+        "reference_frequency_mhz": 144.0,
+        "tap_mode": "async",
+        "sort_by": "total_flux",
+        "sort_direction": "desc",
+        "limit": 100,
+        "source_prefix": None,
+        "result_count": 0,
+        "sources": [],
+    }
 
-    invalid_queries = [
-        {"mode": "name", "query": "x' OR 1=1 --"},
-        {"mode": "name", "query": "ILTJ"},
-        {"mode": "name", "query": "ILTJ_1234"},
-        {"mode": "name"},
-        {"mode": "cone", "ra_deg": 360, "dec_deg": 0, "radius_arcmin": 1},
-        {"mode": "cone", "ra_deg": 0, "dec_deg": 0, "radius_arcmin": 61},
-        {"mode": "cone", "ra_deg": 0, "dec_deg": 0, "radius_arcmin": 1, "query": "ILTJ"},
-        {"mode": "name", "query": "ILTJ", "sort_by": "untrusted_column"},
-    ]
-    for params in invalid_queries:
-        assert client.get("/api/v1/catalogs/lotss-dr3/sources", params=params).status_code == 422
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"source_prefix": "x' OR 1=1--"},
+        {"sort_by": "untrusted_column"},
+        {"sort_direction": "sideways"},
+        {"limit": 20},
+        {"mode": "cone", "ra_deg": 0, "dec_deg": 0, "radius_arcmin": 1},
+        {"page": 1, "page_size": 50},
+    ],
+)
+def test_catalog_endpoint_rejects_old_or_untrusted_query_contract(
+    client: TestClient, params: dict[str, object]
+) -> None:
+    assert client.get("/api/v1/catalogs/lotss-dr3/sources", params=params).status_code == 422
 
 
 def test_catalog_endpoint_maps_upstream_failures(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    params = {"mode": "name", "query": "ILTJ1234"}
+    async def raise_busy(search: object) -> None:
+        raise LofarCatalogBusy
 
-    def raise_timeout(search: object) -> None:
+    monkeypatch.setattr("app.main.catalog_query_coordinator.search", raise_busy)
+    busy_response = client.get("/api/v1/catalogs/lotss-dr3/sources")
+    assert busy_response.status_code == 429
+    assert busy_response.headers["Retry-After"] == "5"
+    assert "잠시 후" in busy_response.json()["detail"]
+
+    async def raise_timeout(search: object) -> None:
         raise LofarCatalogTimeout
 
-    monkeypatch.setattr("app.main.search_sources", raise_timeout)
-    assert client.get("/api/v1/catalogs/lotss-dr3/sources", params=params).status_code == 504
+    monkeypatch.setattr("app.main.catalog_query_coordinator.search", raise_timeout)
+    assert client.get("/api/v1/catalogs/lotss-dr3/sources").status_code == 504
 
-    def raise_bad_response(search: object) -> None:
+    async def raise_bad_response(search: object) -> None:
         raise LofarCatalogError
 
-    monkeypatch.setattr("app.main.search_sources", raise_bad_response)
-    assert client.get("/api/v1/catalogs/lotss-dr3/sources", params=params).status_code == 502
+    monkeypatch.setattr("app.main.catalog_query_coordinator.search", raise_bad_response)
+    assert client.get("/api/v1/catalogs/lotss-dr3/sources").status_code == 502
 
 
 def test_custom_catalog_target_uses_snapshot_without_upstream_call(

@@ -32,11 +32,11 @@ CatalogSourceId = Annotated[
         pattern=r"^[A-Za-z0-9][A-Za-z0-9+_.-]*$",
     ),
 ]
-CatalogSearchText = Annotated[
+CatalogSourcePrefix = Annotated[
     str,
     StringConstraints(
         strip_whitespace=True,
-        min_length=8,
+        min_length=1,
         max_length=80,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9+.-]*$",
     ),
@@ -213,40 +213,30 @@ class LofarSource(ApiModel):
 
 
 class LofarSearchParameters(ApiModel):
-    mode: Literal["name", "cone"]
-    query: CatalogSearchText | None = None
-    ra_deg: float | None = Field(default=None, ge=0.0, lt=360.0)
-    dec_deg: float | None = Field(default=None, ge=-90.0, le=90.0)
-    radius_arcmin: float | None = Field(default=None, ge=0.1, le=60.0)
+    source_prefix: CatalogSourcePrefix | None = None
     sort_by: Literal["total_flux", "peak_flux"] = "total_flux"
     sort_direction: Literal["asc", "desc"] = "desc"
-    page: int = Field(default=1, ge=1)
-    page_size: int = Field(default=20, ge=1, le=50)
+    limit: Literal[10, 25, 50, 100, 250, 500, 1000] = 100
 
-    @model_validator(mode="after")
-    def validate_search_mode(self) -> Self:
-        if self.mode == "name":
-            if self.query is None:
-                raise ValueError("query is required when mode=name")
-            if any(value is not None for value in (self.ra_deg, self.dec_deg, self.radius_arcmin)):
-                raise ValueError("coordinates are only accepted when mode=cone")
-        else:
-            if self.query is not None:
-                raise ValueError("query is only accepted when mode=name")
-            if any(value is None for value in (self.ra_deg, self.dec_deg, self.radius_arcmin)):
-                raise ValueError("ra_deg, dec_deg, and radius_arcmin are required when mode=cone")
-        return self
+    @field_validator("source_prefix", mode="before")
+    @classmethod
+    def empty_prefix_means_all_sources(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class LofarSearchResponse(ApiModel):
     catalog: Literal["lofar_dr3"] = "lofar_dr3"
     catalog_release: str = "LoTSS DR3 v1.0"
-    query_mode: Literal["name", "cone"]
     coordinate_frame: str = "icrs"
     reference_frequency_mhz: float = 144.0
-    page: int
-    page_size: int
-    has_more: bool
+    tap_mode: Literal["async"] = "async"
+    sort_by: Literal["total_flux", "peak_flux"]
+    sort_direction: Literal["asc", "desc"]
+    limit: int
+    source_prefix: str | None
+    result_count: int
     sources: list[LofarSource]
 
 
