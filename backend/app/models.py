@@ -218,6 +218,15 @@ class LofarSearchParameters(ApiModel):
     sort_direction: Literal["asc", "desc"] = "desc"
     limit: Literal[10, 25, 50, 100, 250, 500, 1000] = 100
 
+    @field_validator("limit", mode="before")
+    @classmethod
+    def parse_query_string_limit(cls, value: object) -> object:
+        """Coerce the numeric string supplied by an HTTP query parameter."""
+
+        if isinstance(value, str) and value.isdecimal():
+            return int(value)
+        return value
+
     @field_validator("source_prefix", mode="before")
     @classmethod
     def empty_prefix_means_all_sources(cls, value: object) -> object:

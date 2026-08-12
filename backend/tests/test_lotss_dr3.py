@@ -429,6 +429,32 @@ def test_catalog_endpoint_defaults_to_global_async_browse(client: TestClient, mo
     }
 
 
+def test_catalog_endpoint_coerces_allowed_limit_query_strings(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: list[LofarSearch] = []
+
+    async def fake_search(search: LofarSearch) -> LofarSearchResponse:
+        captured.append(search)
+        return LofarSearchResponse(
+            sort_by=search.sort_by,
+            sort_direction=search.sort_direction,
+            limit=search.limit,
+            source_prefix=search.source_prefix,
+            result_count=0,
+            sources=[],
+        )
+
+    monkeypatch.setattr("app.main.catalog_query_coordinator.search", fake_search)
+
+    for limit in (10, 25, 50, 100, 250, 500, 1000):
+        response = client.get("/api/v1/catalogs/lotss-dr3/sources", params={"limit": str(limit)})
+        assert response.status_code == 200
+        assert response.json()["limit"] == limit
+
+    assert [search.limit for search in captured] == [10, 25, 50, 100, 250, 500, 1000]
+
+
 @pytest.mark.parametrize(
     "params",
     [
