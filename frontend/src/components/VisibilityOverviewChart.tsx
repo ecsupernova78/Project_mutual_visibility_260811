@@ -112,7 +112,7 @@ export function VisibilityOverviewChart({
   }
 
   if (pointCount === 0 || targets.length === 0) {
-    return <div className="chart-empty">선택한 시간창에 동시 관측 가능한 천체가 없습니다.</div>
+    return <div className="chart-empty">플롯할 천체를 하나 이상 선택하세요.</div>
   }
 
   const safeActiveIndex = activeIndex === null ? null : clamp(activeIndex, 0, pointCount - 1)

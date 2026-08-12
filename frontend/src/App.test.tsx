@@ -155,7 +155,7 @@ describe('상호 가시성 인터페이스', () => {
     ).toBeInTheDocument()
   })
 
-  it('전체 개요는 중심 시각 밖에서만 공통 가시인 천체도 시간창에 포함한다', async () => {
+  it('전체 개요에서 시간창 내 가시 천체만 골라 플롯하고 새 계산 때 모두 복원한다', async () => {
     const user = userEvent.setup()
     const outsideCenterTarget = {
       ...responseBody.targets[0],
@@ -179,7 +179,7 @@ describe('상호 가시성 인터페이스', () => {
       targets: [...responseBody.targets, outsideCenterTarget, neverVisibleTarget],
       metadata: { ...responseBody.metadata, target_count: 3 },
     }
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify(mixedResponse), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -196,10 +196,70 @@ describe('상호 가시성 인터페이스', () => {
     expect(within(overview as HTMLElement).getByText('3C123', { selector: '.legend-item' })).toBeInTheDocument()
     expect(within(overview as HTMLElement).getByText('3C273', { selector: '.legend-item' })).toBeInTheDocument()
     expect(within(overview as HTMLElement).queryByText('3C433', { selector: '.legend-item' })).not.toBeInTheDocument()
-    expect(within(overview as HTMLElement).getByText('2개 천체')).toBeInTheDocument()
+    const target123Checkbox = within(overview as HTMLElement).getByRole('checkbox', {
+      name: '개요 그래프에 3C123 표시',
+    })
+    const target273Checkbox = within(overview as HTMLElement).getByRole('checkbox', {
+      name: '개요 그래프에 3C273 표시',
+    })
+    expect(target123Checkbox).toBeChecked()
+    expect(target273Checkbox).toBeChecked()
+    expect(within(overview as HTMLElement).queryByRole('checkbox', {
+      name: '개요 그래프에 3C433 표시',
+    })).not.toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('2 / 2개 표시')).toBeInTheDocument()
     expect(overview?.querySelectorAll('.overview-altitude-line')).toHaveLength(
       responseBody.targets[0].location_series.length * 2,
     )
+
+    await user.click(target273Checkbox)
+
+    expect(target273Checkbox).not.toBeChecked()
+    expect(within(overview as HTMLElement).getByText('1 / 2개 표시')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('3C123', { selector: '.legend-item' })).toBeInTheDocument()
+    expect(within(overview as HTMLElement).queryByText('3C273', { selector: '.legend-item' })).not.toBeInTheDocument()
+    expect(overview?.querySelectorAll('.overview-altitude-line')).toHaveLength(
+      responseBody.targets[0].location_series.length,
+    )
+    expect(screen.getByRole('tab', { name: /3C123/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /3C273/ })).toBeInTheDocument()
+
+    await user.click(within(overview as HTMLElement).getByText('전체 수치 데이터 표'))
+    const filteredTable = within(overview as HTMLElement).getByRole('table')
+    expect(within(filteredTable).getAllByRole('columnheader', { name: /3C123/ })).not.toHaveLength(0)
+    expect(within(filteredTable).queryByRole('columnheader', { name: /3C273/ })).not.toBeInTheDocument()
+
+    await user.click(within(overview as HTMLElement).getByRole('button', { name: '모두 숨기기' }))
+
+    expect(target123Checkbox).not.toBeChecked()
+    expect(within(overview as HTMLElement).getByText('0 / 2개 표시')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('플롯할 천체를 하나 이상 선택하세요.')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).queryByRole('img')).not.toBeInTheDocument()
+    expect(within(overview as HTMLElement).queryByRole('slider')).not.toBeInTheDocument()
+    expect(within(overview as HTMLElement).queryByText('전체 수치 데이터 표')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /3C273/ })).toBeInTheDocument()
+
+    await user.click(within(overview as HTMLElement).getByRole('button', {
+      name: '관측 가능 천체 모두 표시',
+    }))
+
+    expect(target123Checkbox).toBeChecked()
+    expect(target273Checkbox).toBeChecked()
+    expect(within(overview as HTMLElement).getByText('2 / 2개 표시')).toBeInTheDocument()
+    expect(overview?.querySelectorAll('.overview-altitude-line')).toHaveLength(
+      responseBody.targets[0].location_series.length * 2,
+    )
+
+    await user.click(target273Checkbox)
+    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('2 / 2개 표시')).toBeInTheDocument()
+    const recalculatedOverview = document.querySelector('#common-visibility-overview')
+    expect(recalculatedOverview).not.toBeNull()
+    expect(within(recalculatedOverview as HTMLElement).getByRole('checkbox', {
+      name: '개요 그래프에 3C273 표시',
+    })).toBeChecked()
   })
 
   it('가시 구간이 샘플 하나뿐이면 지속시간을 과장하지 않는다', async () => {
@@ -259,7 +319,7 @@ describe('상호 가시성 인터페이스', () => {
     expect(await screen.findByRole('img', { name: /3C123 시간–고도 그래프/ })).toBeInTheDocument()
     const overview = document.querySelector('#common-visibility-overview')
     expect(overview).not.toBeNull()
-    expect(within(overview as HTMLElement).getByText('1개 천체')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('1 / 1개 표시')).toBeInTheDocument()
     expect(within(overview as HTMLElement).getByText('3C123', { selector: '.legend-item' })).toBeInTheDocument()
     expect(within(overview as HTMLElement).getByRole('img', {
       name: /공통 가시 천체 전체 시간–고도 개요/,

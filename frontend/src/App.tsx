@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 
 import { calculateVisibility } from './api'
 import { AltitudeChart } from './components/AltitudeChart'
+import { getTargetColor } from './components/chartStyles'
 import { VisibilityOverviewChart } from './components/VisibilityOverviewChart'
 import type {
   ObserverLocation,
@@ -369,14 +370,26 @@ function Results({
   selectedId,
   onSelect,
   minimumAltitude,
+  overviewTargetIds,
+  onOverviewSelectionChange,
 }: {
   response: VisibilityResponse
   selectedId: string | null
   onSelect: (id: string) => void
   minimumAltitude: number
+  overviewTargetIds: ReadonlySet<string>
+  onOverviewSelectionChange: (targetIds: Set<string>) => void
 }) {
   const visibleTargets = response.targets.filter((target) => target.simultaneous_visible)
   const target = visibleTargets.find((candidate) => candidate.id === selectedId) ?? visibleTargets[0]
+  const plottedTargets = visibleTargets.filter((candidate) => overviewTargetIds.has(candidate.id))
+
+  const toggleOverviewTarget = (id: string) => {
+    const next = new Set(overviewTargetIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    onOverviewSelectionChange(next)
+  }
 
   if (!target) {
     return (
@@ -505,14 +518,73 @@ function Results({
             <h3 id="overview-title">시간창 공통 가시 천체 전체 개요</h3>
             <p>
               선택한 카탈로그 천체 중, 전체 시간창의 하나 이상의 계산 샘플에서 모든 선택
-              관측지의 고도가 동시에 {minimumAltitude}° 이상인 천체의 전체 시간–고도 궤적입니다.
+              관측지의 고도가 동시에 {minimumAltitude}° 이상인 천체를 골라 전체 시간–고도 궤적을
+              비교합니다.
             </p>
           </div>
-          <span className="overview-count">{visibleTargets.length}개 천체</span>
+          <span className="overview-count" aria-live="polite">
+            {plottedTargets.length} / {visibleTargets.length}개 표시
+          </span>
         </header>
 
+        <fieldset className="overview-target-selector">
+          <legend>개요 그래프에 표시할 천체</legend>
+          <div className="overview-selector-actions">
+            <span>관측 가능 시간대가 존재하는 천체만 선택할 수 있습니다.</span>
+            <div>
+              <button
+                type="button"
+                onClick={() => onOverviewSelectionChange(
+                  new Set(visibleTargets.map((candidate) => candidate.id)),
+                )}
+                disabled={plottedTargets.length === visibleTargets.length}
+              >
+                관측 가능 천체 모두 표시
+              </button>
+              <button
+                type="button"
+                onClick={() => onOverviewSelectionChange(new Set())}
+                disabled={plottedTargets.length === 0}
+              >
+                모두 숨기기
+              </button>
+            </div>
+          </div>
+          <div className="overview-target-options">
+            {visibleTargets.map((candidate, index) => {
+              const longest = getLongestCommonVisibility(
+                candidate.visible_intervals,
+                response.metadata.step_minutes,
+                response.times_utc.length,
+              )
+              return (
+                <label
+                  className="overview-target-option"
+                  key={candidate.id}
+                  style={{
+                    '--target-color': getTargetColor(candidate.id, index),
+                  } as CSSProperties}
+                >
+                  <input
+                    type="checkbox"
+                    checked={overviewTargetIds.has(candidate.id)}
+                    aria-label={`개요 그래프에 ${candidate.name} 표시`}
+                    onChange={() => toggleOverviewTarget(candidate.id)}
+                  />
+                  <span className="overview-option-check" aria-hidden="true">✓</span>
+                  <span className="overview-option-dot" aria-hidden="true" />
+                  <span>
+                    <strong>{candidate.name}</strong>
+                    <small>최장 공통 가시 {longest?.label ?? '—'}</small>
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        </fieldset>
+
         <VisibilityOverviewChart
-          targets={visibleTargets}
+          targets={plottedTargets}
           times={response.times_utc}
           centerTime={response.metadata.center_time_utc}
           minimumAltitude={minimumAltitude}
@@ -521,9 +593,10 @@ function Results({
         <div className="science-note">
           <span aria-hidden="true">i</span>
           <p>
-            <strong>읽는 법</strong> 포함 천체는 계산 시간창 안의 하나 이상의 계산 샘플에서 선택한
-            모든 관측지의 고도가 동시에 {minimumAltitude}° 이상입니다. 시간창의 모든 시각에
-            관측 가능하다는 뜻은 아니며, 세로 참조선은 입력한 중심 UTC에 가장 가까운 샘플입니다.
+            <strong>읽는 법</strong> 선택 목록의 천체는 계산 시간창 안의 하나 이상의 계산 샘플에서
+            선택한 모든 관측지의 고도가 동시에 {minimumAltitude}° 이상입니다. 그중 체크한 천체만
+            그래프·범례·수치 표에 표시합니다. 시간창의 모든 시각에 관측 가능하다는 뜻은 아니며,
+            세로 참조선은 입력한 중심 UTC에 가장 가까운 샘플입니다.
           </p>
         </div>
       </section>
@@ -546,6 +619,7 @@ export default function App() {
   )
   const [response, setResponse] = useState<VisibilityResponse | null>(null)
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null)
+  const [overviewTargetIds, setOverviewTargetIds] = useState<Set<string>>(() => new Set())
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [selectionError, setSelectionError] = useState(false)
@@ -558,6 +632,7 @@ export default function App() {
     activeRequest.current?.abort()
     setResponse(null)
     setSelectedResultId(null)
+    setOverviewTargetIds(new Set())
     setStatus('idle')
     setError(null)
   }
@@ -638,6 +713,11 @@ export default function App() {
       setResponse(nextResponse)
       const firstVisible = nextResponse.targets.find((target) => target.simultaneous_visible)
       setSelectedResultId(firstVisible?.id ?? null)
+      setOverviewTargetIds(new Set(
+        nextResponse.targets
+          .filter((target) => target.simultaneous_visible)
+          .map((target) => target.id),
+      ))
       setStatus('success')
     } catch (caught) {
       if (controller.signal.aborted) return
@@ -830,6 +910,8 @@ export default function App() {
               selectedId={selectedResultId}
               onSelect={setSelectedResultId}
               minimumAltitude={minimumAltitude}
+              overviewTargetIds={overviewTargetIds}
+              onOverviewSelectionChange={setOverviewTargetIds}
             />
           )}
         </section>

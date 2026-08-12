@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { VisibilityOverviewChart } from './VisibilityOverviewChart'
 
 describe('VisibilityOverviewChart', () => {
-  it('시간창 전체에 동시 관측 가능한 target이 없으면 빈 상태를 표시한다', () => {
+  it('플롯 대상으로 선택한 target이 없으면 빈 상태를 표시한다', () => {
     render(
       <VisibilityOverviewChart
         targets={[]}
@@ -19,7 +19,7 @@ describe('VisibilityOverviewChart', () => {
     )
 
     expect(
-      screen.getByText('선택한 시간창에 동시 관측 가능한 천체가 없습니다.'),
+      screen.getByText('플롯할 천체를 하나 이상 선택하세요.'),
     ).toBeInTheDocument()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
