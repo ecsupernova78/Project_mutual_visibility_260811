@@ -137,6 +137,7 @@ describe('상호 가시성 인터페이스', () => {
       step_minutes: 15,
       minimum_altitude_deg: 15,
       target_ids: ['3c123', '3c273', '3c433', '3c295', '3c134'],
+      custom_targets: [],
     })
     expect(payload.locations).toEqual([
       expect.objectContaining({ latitude_deg: -30.31667, longitude_deg: 149.76667 }),
@@ -153,6 +154,146 @@ describe('상호 가시성 인터페이스', () => {
         name: /공통 가시 천체의 관측지별/,
       }),
     ).toBeInTheDocument()
+  })
+
+  it('LOFAR DR3를 검색해 선택한 천체 snapshot을 계산 요청에 함께 보낸다', async () => {
+    const user = userEvent.setup()
+    const source = {
+      id: 'lotss-dr3-abc123',
+      catalog: 'lofar_dr3',
+      source_id: 'ILTJ123456.78+451234.5',
+      name: 'ILTJ123456.78+451234.5',
+      ra_deg: 188.73658,
+      dec_deg: 45.20958,
+      ra_hms: '12:34:56.78',
+      dec_dms: '+45:12:34.5',
+      total_flux_mjy: 4321.5,
+      peak_flux_mjy: 3210.25,
+    }
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.startsWith('/api/v1/catalogs/lotss-dr3/sources')) {
+        return new Response(JSON.stringify({
+          catalog: 'lofar_dr3',
+          query_mode: 'name',
+          page: 1,
+          page_size: 20,
+          has_more: false,
+          sources: [source],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      expect(init?.method).toBe('POST')
+      return new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
+    render(<App />)
+
+    const visibilityTab = screen.getByRole('tab', { name: '관측 가시성' })
+    const catalogTab = screen.getByRole('tab', { name: 'LOFAR DR3 카탈로그' })
+    expect(visibilityTab).toHaveAttribute('aria-selected', 'true')
+    await user.click(catalogTab)
+    expect(catalogTab).toHaveAttribute('aria-selected', 'true')
+
+    await user.type(screen.getByLabelText('Source ID 앞 8자 이상'), 'ILTJ1234')
+    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 검색' }))
+    const sourceCheckbox = await screen.findByRole('checkbox', {
+      name: `${source.name} 계산 대상에 추가`,
+    })
+    expect(sourceCheckbox).not.toBeChecked()
+
+    const searchUrl = String(fetchMock.mock.calls[0][0])
+    const searchParams = new URL(searchUrl, 'http://localhost').searchParams
+    expect(searchParams.get('mode')).toBe('name')
+    expect(searchParams.get('query')).toBe('ILTJ1234')
+    expect(searchParams.get('sort_by')).toBe('total_flux')
+    expect(searchParams.get('sort_direction')).toBe('desc')
+
+    await user.click(sourceCheckbox)
+    expect(sourceCheckbox).toBeChecked()
+    await user.click(screen.getByRole('button', { name: '관측 설정으로 이동' }))
+    expect(screen.getByText('LOFAR DR3에서 가져온 천체')).toBeInTheDocument()
+    const importedList = screen.getByLabelText('가져온 LOFAR DR3 계산 대상')
+    expect(within(importedList).getByText(source.name, { selector: 'b' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const payload = JSON.parse(String(fetchMock.mock.calls[1][1]?.body)) as {
+      target_ids: string[]
+      custom_targets: Array<Record<string, unknown>>
+    }
+    expect(payload.target_ids).toHaveLength(5)
+    expect(payload.custom_targets).toEqual([{
+      id: source.id,
+      name: source.name,
+      aliases: [],
+      ra_deg: source.ra_deg,
+      dec_deg: source.dec_deg,
+      catalog: 'lofar_dr3',
+      catalog_source_id: source.source_id,
+      total_flux_mjy: source.total_flux_mjy,
+      peak_flux_mjy: source.peak_flux_mjy,
+    }])
+
+    await user.click(screen.getByRole('tab', { name: /LOFAR DR3 카탈로그/ }))
+    expect(screen.getByLabelText('Source ID 앞 8자 이상')).toHaveValue('ILTJ1234')
+    expect(screen.getByRole('checkbox', { name: `${source.name} 계산 대상에서 제거` })).toBeChecked()
+  })
+
+  it('LOFAR Source ID가 8자보다 짧으면 브라우저 검증에서 검색 요청을 막는다', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    render(<App />)
+
+    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 카탈로그' }))
+    const query = screen.getByLabelText('Source ID 앞 8자 이상')
+    await user.type(query, 'ILTJ123')
+    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 검색' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('8자 이상')
+    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('기본 천체와 LOFAR 천체 합계가 25개를 넘지 않도록 모든 추가 경로를 막는다', async () => {
+    const user = userEvent.setup()
+    const sources = Array.from({ length: 25 }, (_, index) => ({
+      id: `lotss-dr3-limit-${String(index).padStart(2, '0')}`,
+      catalog: 'lofar_dr3',
+      source_id: `ILTJ1234${String(index).padStart(2, '0')}`,
+      name: `ILTJ1234${String(index).padStart(2, '0')}`,
+      ra_deg: 100 + index,
+      dec_deg: 20,
+      ra_hms: '08:00:00',
+      dec_dms: '+20:00:00',
+      total_flux_mjy: 1000 - index,
+      peak_flux_mjy: 900 - index,
+    }))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      catalog: 'lofar_dr3',
+      query_mode: 'name',
+      page: 1,
+      page_size: 50,
+      has_more: false,
+      sources,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '전체 해제' }))
+    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 카탈로그' }))
+    await user.type(screen.getByLabelText('Source ID 앞 8자 이상'), 'ILTJ1234')
+    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 검색' }))
+    const sourceChecks = await screen.findAllByRole('checkbox', { name: /계산 대상에 추가/ })
+    expect(sourceChecks).toHaveLength(25)
+    for (const checkbox of sourceChecks) await user.click(checkbox)
+    expect(screen.getByText('25 / 25')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '관측 설정으로 이동' }))
+    expect(screen.getByRole('checkbox', { name: /3C123/ })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: '전체 선택' }))
+    expect(screen.getByText(/전체 25\/25개/)).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /3C123/ })).not.toBeChecked()
   })
 
   it('전체 개요에서 시간창 내 가시 천체만 골라 플롯하고 새 계산 때 모두 복원한다', async () => {

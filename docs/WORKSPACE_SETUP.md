@@ -54,9 +54,13 @@ npm run check
 기본 동기화에는 웹 API와 계산에 필요한 패키지만 포함합니다.
 
 ```powershell
-uv sync --project backend --group catalog   # 이후 SIMBAD/VizieR/Gaia 연동용
+uv sync --project backend --group catalog   # 이후 astroquery 기반 카탈로그 연구용
 uv sync --project backend --group research  # 과거 PNG/MP4 재현용
 ```
+
+운영 중인 LoTSS DR3 검색은 기본 API 의존성으로 설치되며 별도 그룹이 필요하지 않습니다. 외부
+조회 시간 제한과 최대 행 수는 `.env.example`의 `CATALOG_REQUEST_TIMEOUT_SECONDS`,
+`CATALOG_MAX_ROWS`를 기준으로 배포 환경에서 조정합니다.
 
 배포 빌드에서는 개발 의존성을 제외하고 잠금 상태를 검증합니다.
 
@@ -66,7 +70,12 @@ uv sync --project backend --locked --no-dev
 
 ## 6. 환경 변수와 생성물
 
-필요할 때 `.env.example`을 `.env`로 복사하고 로컬 값만 변경합니다. `.env`, 토큰, 인증서, 개인키는 Git에 추가하지 않습니다. 기본 CORS 허용 주소는 로컬 Vite 서버입니다. 웹과 API를 분리 배포할 때는 `VITE_API_BASE_URL`을 API 공개 주소로, `CORS_ORIGINS`를 웹 공개 주소로 지정합니다.
+`.env.example`은 지원 설정의 값과 이름을 보여 주는 템플릿입니다. 현재 개발 명령은 루트 `.env`를
+자동으로 읽지 않으므로 로컬 override는 PowerShell process 환경 변수로 지정합니다. 예를 들어
+`$env:CATALOG_REQUEST_TIMEOUT_SECONDS='30'` 또는 `$env:CORS_ORIGINS='https://web.example'`를
+설정한 터미널에서 API를 시작합니다. 프런트 API 주소는 `frontend/.env.local`의
+`VITE_API_BASE_URL`로 지정할 수 있습니다. `.env`, `.env.local`, 토큰, 인증서, 개인키는 Git에
+추가하지 않습니다. 기본 CORS 허용 주소는 로컬 Vite 서버입니다.
 
 다음 경로는 재생성 가능하거나 기기별 상태이므로 Git에서 제외됩니다.
 

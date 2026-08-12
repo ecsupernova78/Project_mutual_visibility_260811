@@ -13,7 +13,7 @@
     "format:check": "uv run --project backend ruff format --check backend/app backend/tests",
     "test": "npm run test:web && npm run test:api",
     "test:web": "npm run test --workspace frontend",
-    "test:api": "uv run --project backend pytest backend/tests -q",
+    "test:api": "uv run --project backend python -m pytest backend/tests -q",
     "check": "npm run lint && npm run format:check && npm run test && npm run build"
   },
   "packageManager": "npm@11.16.0",

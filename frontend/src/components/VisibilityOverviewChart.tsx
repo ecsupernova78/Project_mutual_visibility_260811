@@ -79,7 +79,7 @@ export function VisibilityOverviewChart({
   const y = (altitude: number) =>
     MARGIN.top + ((Y_MAX - clamp(altitude, Y_MIN, Y_MAX)) / (Y_MAX - Y_MIN)) * PLOT_HEIGHT
 
-  const paths = targets.flatMap((target) =>
+  const paths = targets.flatMap((target, targetIndex) =>
     target.location_series.map((series, siteIndex) => {
       let drawing = false
       const path = series.altitudes_deg
@@ -94,7 +94,7 @@ export function VisibilityOverviewChart({
           return `${command}${x(index).toFixed(2)},${y(altitude).toFixed(2)}`
         })
         .join(' ')
-      return { target, series, siteIndex, path }
+      return { target, targetIndex, series, siteIndex, path }
     }),
   )
 
@@ -222,12 +222,12 @@ export function VisibilityOverviewChart({
               y2={y(minimumAltitude)}
               className="threshold-line"
             />
-            {paths.map(({ target, series, siteIndex, path }) => (
+            {paths.map(({ target, targetIndex, series, siteIndex, path }) => (
               <path
                 key={`${target.id}-${series.location_id}`}
                 d={path}
                 fill="none"
-                stroke={getTargetColor(target.id)}
+                stroke={getTargetColor(target.id, targetIndex)}
                 strokeWidth="2.15"
                 strokeDasharray={getSiteChartStyle(series.location_id, siteIndex).dash}
                 strokeLinecap="round"

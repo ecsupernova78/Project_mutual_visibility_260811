@@ -9,6 +9,7 @@
 - Narrabri, Pyeongchang, Fushan 중 1–3개 관측지 선택 및 좌표 편집
 - 중심 UTC, 전후 시간창, 샘플 간격, 최소 고도 설정
 - 3C 123, 3C 273, 3C 433, 3C 295, 3C 134 선택
+- 별도 LOFAR DR3 카탈로그 탭에서 LoTSS DR3 전파원 검색, 144 MHz 밝기 정렬 및 계산 대상으로 가져오기
 - 관측지별 시간–고도 곡선과 지평선·최소 고도선 표시
 - 모든 선택 관측지에서 동시에 임계 고도 이상인 샘플과 연속 샘플 묶음 강조
 - target별 시간창 내 최장 공통 가시 구간을 샘플 기준으로 표시
@@ -50,7 +51,20 @@ npm run check
 
 Fushan 기본 좌표는 제공된 `24°45′23.3″ N, 121°34′53.9″ E`를 각각 `24.7564722222°, 121.5816388889°`로 변환한 값입니다. 해발고도는 제공되지 않아 편집 가능한 `0 m` 기본값을 사용합니다.
 
-이 단계에는 천체 밝기, 태양·달, 날씨, 지형 차폐, 관측 장비 성능이 포함되지 않습니다.
+LoTSS DR3에서 가져온 total/peak flux는 카탈로그 검색 결과의 정렬과 식별에만 사용합니다. 밝기를
+가시성 판정에 반영하지 않으므로, 현재 계산에는 태양·달, 날씨, 지형 차폐, 관측 장비 성능이나
+검출 한계가 포함되지 않습니다.
+
+## LOFAR DR3 카탈로그 연계
+
+카탈로그 탭은 ASTRON의 공개 TAP 서비스에 있는 `lotss_dr3.main_sources`를 서버에서 제한된
+ADQL 템플릿으로 조회합니다. LoTSS Source ID 앞부분 또는 좌표 원뿔 검색을 지원하며, integrated flux와 peak
+flux 기준으로 정렬할 수 있습니다. 선택한 source의 ICRS 좌표 snapshot을 계산 요청에 포함하므로
+고도 계산 중에는 외부 카탈로그를 다시 조회하지 않습니다. 공개 조회에는 계정이나 API 키가
+필요하지 않습니다.
+
+- [LoTSS DR3 공개 릴리스](https://lofar-surveys.org/dr3.html)
+- [ASTRON LoTSS DR3 source table](https://vo.astron.nl/tableinfo/lotss_dr3.main_sources)
 
 ## 구조
 

@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import os
+from typing import Annotated
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.catalog import TARGETS
+from app.lotss_dr3 import LofarCatalogError, LofarCatalogTimeout, LofarSearch, search_sources
 from app.models import (
     HealthResponse,
+    LofarSearchParameters,
+    LofarSearchResponse,
     TargetCatalogItem,
     TargetCatalogResponse,
     VisibilityRequest,
@@ -62,6 +66,44 @@ def list_targets() -> TargetCatalogResponse:
             for target in TARGETS
         ]
     )
+
+
+@app.get(
+    "/api/v1/catalogs/lotss-dr3/sources",
+    response_model=LofarSearchResponse,
+    tags=["catalog"],
+)
+def search_lotss_dr3_sources(
+    params: Annotated[LofarSearchParameters, Query()],
+) -> LofarSearchResponse:
+    """Search the public LoTSS DR3 source table through a restricted TAP adapter."""
+
+    try:
+        return search_sources(
+            LofarSearch(
+                mode=params.mode,
+                query=params.query,
+                ra_deg=params.ra_deg,
+                dec_deg=params.dec_deg,
+                radius_arcmin=params.radius_arcmin,
+                sort_by=params.sort_by,
+                sort_direction=params.sort_direction,
+                page=params.page,
+                page_size=params.page_size,
+            )
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except LofarCatalogTimeout as error:
+        raise HTTPException(
+            status_code=504,
+            detail="LOFAR DR3 카탈로그가 제한 시간 안에 응답하지 않았습니다.",
+        ) from error
+    except LofarCatalogError as error:
+        raise HTTPException(
+            status_code=502,
+            detail="LOFAR DR3 카탈로그를 일시적으로 이용할 수 없거나 응답 형식이 올바르지 않습니다.",
+        ) from error
 
 
 @app.post(

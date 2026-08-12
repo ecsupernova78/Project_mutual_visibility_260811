@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import numpy as np
 from astropy import units as u
-from astropy.coordinates import AltAz, EarthLocation
+from astropy.coordinates import AltAz, EarthLocation, SkyCoord
 from astropy.time import Time
 from astropy.utils import iers
 
@@ -25,6 +26,45 @@ from app.models import (
 iers.conf.auto_download = False
 iers.conf.auto_max_age = None
 iers.conf.iers_degraded_accuracy = "warn"
+
+
+@dataclass(frozen=True, slots=True)
+class _CalculationTarget:
+    id: str
+    name: str
+    aliases: tuple[str, ...]
+    coordinate: SkyCoord
+    catalog: str | None = None
+    catalog_source_id: str | None = None
+    total_flux_mjy: float | None = None
+    peak_flux_mjy: float | None = None
+
+
+def _calculation_targets(request: VisibilityRequest) -> list[_CalculationTarget]:
+    targets = [
+        _CalculationTarget(
+            id=target.id,
+            name=target.name,
+            aliases=target.aliases,
+            coordinate=target.coordinate,
+        )
+        for target_id in request.target_ids
+        if (target := TARGETS_BY_ID[target_id])
+    ]
+    targets.extend(
+        _CalculationTarget(
+            id=target.id,
+            name=target.name,
+            aliases=tuple(target.aliases),
+            coordinate=SkyCoord(ra=target.ra_deg * u.deg, dec=target.dec_deg * u.deg, frame="icrs"),
+            catalog=target.catalog,
+            catalog_source_id=target.catalog_source_id,
+            total_flux_mjy=target.total_flux_mjy,
+            peak_flux_mjy=target.peak_flux_mjy,
+        )
+        for target in request.custom_targets
+    )
+    return targets
 
 
 def _build_times(request: VisibilityRequest) -> list[datetime]:
@@ -82,8 +122,7 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
     ]
 
     target_results: list[TargetVisibility] = []
-    for target_id in request.target_ids:
-        target = TARGETS_BY_ID[target_id]
+    for target in _calculation_targets(request):
         coordinate = target.coordinate
         altitude_arrays: list[np.ndarray] = []
         location_series: list[LocationSeries] = []
@@ -118,6 +157,10 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                 visible_intervals=intervals,
                 max_common_altitude_deg=round(float(np.max(common_altitudes)), 6),
                 simultaneous_visible=bool(np.any(simultaneous_mask)),
+                catalog=target.catalog,
+                catalog_source_id=target.catalog_source_id,
+                total_flux_mjy=target.total_flux_mjy,
+                peak_flux_mjy=target.peak_flux_mjy,
             )
         )
 

@@ -3,8 +3,11 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 
 import { calculateVisibility } from './api'
 import { AltitudeChart } from './components/AltitudeChart'
 import { getTargetColor } from './components/chartStyles'
+import { LofarCatalogPanel } from './components/LofarCatalogPanel'
 import { VisibilityOverviewChart } from './components/VisibilityOverviewChart'
 import type {
+  CustomTargetSnapshot,
+  LofarSource,
   ObserverLocation,
   VisibilityRequest,
   VisibilityResponse,
@@ -20,6 +23,10 @@ interface CatalogTarget {
   name: string
   coordinate: string
 }
+
+type AppTab = 'visibility' | 'lofar'
+
+const MAXIMUM_TARGET_COUNT = 25
 
 const CATALOG_TARGETS: CatalogTarget[] = [
   { id: '3c123', name: '3C123', coordinate: '04h 37m · +29° 40′' },
@@ -82,6 +89,11 @@ function formatCoordinate(value: number, type: 'ra' | 'dec') {
     return `${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m`
   }
   return `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}°`
+}
+
+function formatRadioFlux(value: number | null | undefined, unit: string) {
+  if (value == null || !Number.isFinite(value)) return `— ${unit}`
+  return `${new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 3 }).format(value)} ${unit}`
 }
 
 function NumericInput({
@@ -453,10 +465,19 @@ function Results({
       <section className="chart-panel" role="tabpanel" aria-label={`${target.name} 고도 그래프`}>
         <header className="chart-heading">
           <div>
-            <span className="object-type">ICRS 고정 천체</span>
+            <span className="object-type">
+              {target.catalog === 'lofar_dr3' ? 'LoTSS DR3 SOURCE · 144 MHz' : 'ICRS 고정 천체'}
+            </span>
             <h3>{target.name}</h3>
             {target.aliases.length > 0 && (
               <p className="alias-list">{target.aliases.join(' · ')}</p>
+            )}
+            {target.catalog === 'lofar_dr3' && (
+              <p className="catalog-source-meta">
+                총 플럭스 {formatRadioFlux(target.total_flux_mjy, 'mJy')}
+                <span aria-hidden="true"> · </span>
+                피크 플럭스 {formatRadioFlux(target.peak_flux_mjy, 'mJy/beam')}
+              </p>
             )}
           </div>
           <dl className="object-coordinates">
@@ -605,6 +626,7 @@ function Results({
 }
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<AppTab>('visibility')
   const [locations, setLocations] = useState<ObserverLocation[]>(INITIAL_LOCATIONS)
   const [selectedLocationIds, setSelectedLocationIds] = useState(
     () => new Set(['narrabri', 'pyeongchang']),
@@ -616,6 +638,9 @@ export default function App() {
   const [minimumAltitude, setMinimumAltitude] = useState(15)
   const [selectedTargetIds, setSelectedTargetIds] = useState(
     () => new Set(CATALOG_TARGETS.map((target) => target.id)),
+  )
+  const [importedTargets, setImportedTargets] = useState<Map<string, CustomTargetSnapshot>>(
+    () => new Map(),
   )
   const [response, setResponse] = useState<VisibilityResponse | null>(null)
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null)
@@ -658,6 +683,7 @@ export default function App() {
   }
 
   const toggleTarget = (id: string) => {
+    if (!selectedTargetIds.has(id) && selectedTargetIds.size + importedTargets.size >= MAXIMUM_TARGET_COUNT) return
     invalidateResults()
     setSelectedTargetIds((current) => {
       const next = new Set(current)
@@ -668,13 +694,49 @@ export default function App() {
     })
   }
 
+  const toggleImportedSource = (source: LofarSource) => {
+    const isSelected = importedTargets.has(source.id)
+    if (!isSelected && selectedTargetIds.size + importedTargets.size >= MAXIMUM_TARGET_COUNT) return
+    invalidateResults()
+    setImportedTargets((current) => {
+      const next = new Map(current)
+      if (next.has(source.id)) {
+        next.delete(source.id)
+      } else {
+        next.set(source.id, {
+          id: source.id,
+          name: source.name,
+          aliases: source.source_id === source.name ? [] : [source.source_id],
+          ra_deg: source.ra_deg,
+          dec_deg: source.dec_deg,
+          catalog: source.catalog,
+          catalog_source_id: source.source_id,
+          ...(source.total_flux_mjy === null ? {} : { total_flux_mjy: source.total_flux_mjy }),
+          ...(source.peak_flux_mjy === null ? {} : { peak_flux_mjy: source.peak_flux_mjy }),
+        })
+      }
+      if (next.size + selectedTargetIds.size > 0) setSelectionError(false)
+      return next
+    })
+  }
+
+  const removeImportedTarget = (id: string) => {
+    if (!importedTargets.has(id)) return
+    invalidateResults()
+    setImportedTargets((current) => {
+      const next = new Map(current)
+      next.delete(id)
+      return next
+    })
+  }
+
   const handleSubmit = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
     if (selectedLocationIds.size === 0) {
       setLocationSelectionError(true)
       return
     }
-    if (selectedTargetIds.size === 0) {
+    if (selectedTargetIds.size + importedTargets.size === 0) {
       setSelectionError(true)
       return
     }
@@ -705,6 +767,7 @@ export default function App() {
       target_ids: CATALOG_TARGETS.filter((target) => selectedTargetIds.has(target.id)).map(
         (target) => target.id,
       ),
+      custom_targets: [...importedTargets.values()],
     }
 
     try {
@@ -729,7 +792,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#main-content" aria-label="공통하늘 홈">
+        <a className="brand" href="#visibility-panel" aria-label="공통하늘 홈" onClick={() => setActiveTab('visibility')}>
           <span className="brand-mark" aria-hidden="true"><i /></span>
           <span><b>공통하늘</b><small>Mutual Sky</small></span>
         </a>
@@ -737,7 +800,37 @@ export default function App() {
         <span className="utc-badge"><i aria-hidden="true" />모든 시각은 UTC</span>
       </header>
 
-      <main id="main-content" className="workspace">
+      <nav className="app-tabs" role="tablist" aria-label="주요 기능">
+        <button
+          id="visibility-tab"
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'visibility'}
+          aria-controls="visibility-panel"
+          onClick={() => setActiveTab('visibility')}
+        >
+          관측 가시성
+        </button>
+        <button
+          id="lofar-catalog-tab"
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'lofar'}
+          aria-controls="lofar-catalog-panel"
+          onClick={() => setActiveTab('lofar')}
+        >
+          LOFAR DR3 카탈로그
+          {importedTargets.size > 0 && <span>{importedTargets.size}</span>}
+        </button>
+      </nav>
+
+      <main
+        id="visibility-panel"
+        className="workspace"
+        role="tabpanel"
+        aria-labelledby="visibility-tab"
+        hidden={activeTab !== 'visibility'}
+      >
         <aside className="control-panel" aria-labelledby="conditions-title">
           <div className="panel-heading">
             <div>
@@ -848,7 +941,7 @@ export default function App() {
             <fieldset disabled={status === 'loading'}>
               <legend className="section-legend"><span>03</span>천체 카탈로그</legend>
               <div className="target-heading-row">
-                <p>3C 전파원</p>
+                <p>기본 3C 전파원 · 전체 {selectedTargetIds.size + importedTargets.size}/{MAXIMUM_TARGET_COUNT}개</p>
                 <button
                   type="button"
                   className="text-button"
@@ -857,11 +950,17 @@ export default function App() {
                     if (selectedTargetIds.size !== CATALOG_TARGETS.length) {
                       setSelectionError(false)
                     }
-                    setSelectedTargetIds(
-                      selectedTargetIds.size === CATALOG_TARGETS.length
-                        ? new Set()
-                        : new Set(CATALOG_TARGETS.map((target) => target.id)),
-                    )
+                    if (selectedTargetIds.size === CATALOG_TARGETS.length) {
+                      setSelectedTargetIds(new Set())
+                    } else {
+                      const availableSlots = MAXIMUM_TARGET_COUNT - importedTargets.size
+                      const next = new Set(selectedTargetIds)
+                      for (const target of CATALOG_TARGETS) {
+                        if (next.size >= availableSlots) break
+                        next.add(target.id)
+                      }
+                      setSelectedTargetIds(next)
+                    }
                   }}
                 >
                   {selectedTargetIds.size === CATALOG_TARGETS.length ? '전체 해제' : '전체 선택'}
@@ -873,6 +972,10 @@ export default function App() {
                     <input
                       type="checkbox"
                       checked={selectedTargetIds.has(target.id)}
+                      disabled={
+                        !selectedTargetIds.has(target.id) &&
+                        selectedTargetIds.size + importedTargets.size >= MAXIMUM_TARGET_COUNT
+                      }
                       onChange={() => toggleTarget(target.id)}
                     />
                     <span className="custom-check" aria-hidden="true">✓</span>
@@ -883,6 +986,33 @@ export default function App() {
                   </label>
                 ))}
               </div>
+              <div className="imported-targets-heading">
+                <p>LOFAR DR3에서 가져온 천체 <strong>{importedTargets.size}</strong></p>
+                <button type="button" className="text-button" onClick={() => setActiveTab('lofar')}>
+                  카탈로그 검색
+                </button>
+              </div>
+              {importedTargets.size > 0 ? (
+                <div className="imported-target-list" aria-label="가져온 LOFAR DR3 계산 대상">
+                  {[...importedTargets.values()].map((target) => (
+                    <article key={target.id} className="imported-target-card">
+                      <span>
+                        <b>{target.name}</b>
+                        <small>{target.catalog_source_id} · {target.ra_deg.toFixed(4)}°, {target.dec_deg.toFixed(4)}°</small>
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`${target.name} 계산 대상에서 제거`}
+                        onClick={() => removeImportedTarget(target.id)}
+                      >
+                        제거
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="imported-target-empty">LOFAR DR3 탭에서 검색한 천체를 계산 대상으로 추가할 수 있습니다.</p>
+              )}
               {selectionError && (
                 <p className="field-error" role="alert">계산할 천체를 하나 이상 선택해 주세요.</p>
               )}
@@ -916,6 +1046,15 @@ export default function App() {
           )}
         </section>
       </main>
+
+      <LofarCatalogPanel
+        hidden={activeTab !== 'lofar'}
+        selectedSourceIds={new Set(importedTargets.keys())}
+        selectedTargetCount={selectedTargetIds.size + importedTargets.size}
+        maximumTargetCount={MAXIMUM_TARGET_COUNT}
+        onToggleSource={toggleImportedSource}
+        onGoToVisibility={() => setActiveTab('visibility')}
+      />
 
       <footer className="footer-note">
         기준 좌표계 ICRS · 고도 좌표계 AltAz · 계산 결과는 관측 계획 참고용입니다.

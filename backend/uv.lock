@@ -620,6 +620,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "astropy" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "numpy" },
     { name = "pydantic-settings" },
     { name = "uvicorn", extra = ["standard"] },
@@ -630,7 +631,6 @@ catalog = [
     { name = "astroquery" },
 ]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -644,6 +644,7 @@ research = [
 requires-dist = [
     { name = "astropy", specifier = ">=8.0,<8.1" },
     { name = "fastapi", specifier = ">=0.141,<0.142" },
+    { name = "httpx", specifier = ">=0.28,<0.29" },
     { name = "numpy", specifier = ">=2,<3" },
     { name = "pydantic-settings", specifier = ">=2,<3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.41,<0.42" },
@@ -652,7 +653,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 catalog = [{ name = "astroquery", specifier = "==0.4.11" }]
 dev = [
-    { name = "httpx", specifier = ">=0.28,<0.29" },
     { name = "pytest", specifier = ">=9,<10" },
     { name = "pytest-cov", specifier = ">=7,<8" },
     { name = "ruff", specifier = ">=0.14,<1" },
