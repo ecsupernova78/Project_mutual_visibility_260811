@@ -155,7 +155,7 @@ describe('상호 가시성 인터페이스', () => {
     ).toBeInTheDocument()
   })
 
-  it('전체 개요는 시간창 전체가 아니라 중심 시각 샘플에서 공통 가시인 천체만 표시한다', async () => {
+  it('전체 개요는 중심 시각 밖에서만 공통 가시인 천체도 시간창에 포함한다', async () => {
     const user = userEvent.setup()
     const outsideCenterTarget = {
       ...responseBody.targets[0],
@@ -164,11 +164,20 @@ describe('상호 가시성 인터페이스', () => {
       aliases: ['3C 273'],
       simultaneous_mask: [true, false, true],
     }
+    const neverVisibleTarget = {
+      ...responseBody.targets[0],
+      id: '3c433',
+      name: '3C433',
+      aliases: ['3C 433'],
+      simultaneous_mask: [false, false, false],
+      visible_intervals: [],
+      simultaneous_visible: false,
+    }
     const mixedResponse = {
       ...responseBody,
       visible_target_count: 2,
-      targets: [...responseBody.targets, outsideCenterTarget],
-      metadata: { ...responseBody.metadata, target_count: 2 },
+      targets: [...responseBody.targets, outsideCenterTarget, neverVisibleTarget],
+      metadata: { ...responseBody.metadata, target_count: 3 },
     }
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(mixedResponse), {
@@ -181,11 +190,16 @@ describe('상호 가시성 인터페이스', () => {
     await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
 
     expect(await screen.findByRole('tab', { name: /3C273/ })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /3C433/ })).not.toBeInTheDocument()
     const overview = document.querySelector('#common-visibility-overview')
     expect(overview).not.toBeNull()
     expect(within(overview as HTMLElement).getByText('3C123', { selector: '.legend-item' })).toBeInTheDocument()
-    expect(within(overview as HTMLElement).queryByText('3C273', { selector: '.legend-item' })).not.toBeInTheDocument()
-    expect(within(overview as HTMLElement).getByText('1개 천체')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('3C273', { selector: '.legend-item' })).toBeInTheDocument()
+    expect(within(overview as HTMLElement).queryByText('3C433', { selector: '.legend-item' })).not.toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('2개 천체')).toBeInTheDocument()
+    expect(overview?.querySelectorAll('.overview-altitude-line')).toHaveLength(
+      responseBody.targets[0].location_series.length * 2,
+    )
   })
 
   it('가시 구간이 샘플 하나뿐이면 지속시간을 과장하지 않는다', async () => {
@@ -223,7 +237,7 @@ describe('상호 가시성 인터페이스', () => {
     expect(detailPanel.querySelector('.duration-metric')).toHaveTextContent('지속시간 미확정')
   })
 
-  it('시간창에는 가시 천체가 있어도 중심 시각에 없으면 빈 개요를 표시한다', async () => {
+  it('중심 시각에 보이지 않아도 시간창 안에 가시 샘플이 있으면 개요에 표시한다', async () => {
     const user = userEvent.setup()
     const outsideCenterResponse = {
       ...responseBody,
@@ -245,9 +259,11 @@ describe('상호 가시성 인터페이스', () => {
     expect(await screen.findByRole('img', { name: /3C123 시간–고도 그래프/ })).toBeInTheDocument()
     const overview = document.querySelector('#common-visibility-overview')
     expect(overview).not.toBeNull()
-    expect(within(overview as HTMLElement).getByText('0개 천체')).toBeInTheDocument()
-    expect(within(overview as HTMLElement).getByText(/중심 시각에 공통으로 보이는 천체가 없습니다/)).toBeInTheDocument()
-    expect(within(overview as HTMLElement).queryByRole('img')).not.toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('1개 천체')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('3C123', { selector: '.legend-item' })).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByRole('img', {
+      name: /공통 가시 천체 전체 시간–고도 개요/,
+    })).toHaveAccessibleDescription(/전체 시간창의 하나 이상의 계산 샘플에서/)
   })
 
   it('Fushan을 포함하면 세 관측지를 요청하고 세 위치 곡선을 표시한다', async () => {

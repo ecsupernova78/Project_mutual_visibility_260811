@@ -83,16 +83,6 @@ function formatCoordinate(value: number, type: 'ra' | 'dec') {
   return `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}°`
 }
 
-function nearestTimeIndex(times: string[], targetTime: string) {
-  const target = new Date(targetTime).getTime()
-  if (!Number.isFinite(target) || times.length === 0) return 0
-  return times.reduce((nearest, time, index) => {
-    const distance = Math.abs(new Date(time).getTime() - target)
-    const nearestDistance = Math.abs(new Date(times[nearest]).getTime() - target)
-    return distance < nearestDistance ? index : nearest
-  }, 0)
-}
-
 function NumericInput({
   id,
   label,
@@ -386,13 +376,6 @@ function Results({
   minimumAltitude: number
 }) {
   const visibleTargets = response.targets.filter((target) => target.simultaneous_visible)
-  const centerIndex = nearestTimeIndex(
-    response.times_utc,
-    response.metadata.center_time_utc,
-  )
-  const centerVisibleTargets = response.targets.filter(
-    (candidate) => candidate.simultaneous_mask[centerIndex] === true,
-  )
   const target = visibleTargets.find((candidate) => candidate.id === selectedId) ?? visibleTargets[0]
 
   if (!target) {
@@ -518,18 +501,18 @@ function Results({
       >
         <header className="chart-heading overview-heading">
           <div>
-            <span className="object-type">TARGETS AT THE CENTER UTC SAMPLE</span>
-            <h3 id="overview-title">중심 시각 공통 하늘</h3>
+            <span className="object-type">TARGETS VISIBLE WITHIN THE TIME WINDOW</span>
+            <h3 id="overview-title">시간창 공통 가시 천체 전체 개요</h3>
             <p>
-              입력한 기준 시각에 가장 가까운 샘플({formatUtcDateTime(response.times_utc[centerIndex])})에서
-              모든 선택 관측지의 고도가 {minimumAltitude}° 이상인 천체의 전체 시간–고도 궤적입니다.
+              선택한 카탈로그 천체 중, 전체 시간창의 하나 이상의 계산 샘플에서 모든 선택
+              관측지의 고도가 동시에 {minimumAltitude}° 이상인 천체의 전체 시간–고도 궤적입니다.
             </p>
           </div>
-          <span className="overview-count">{centerVisibleTargets.length}개 천체</span>
+          <span className="overview-count">{visibleTargets.length}개 천체</span>
         </header>
 
         <VisibilityOverviewChart
-          targets={centerVisibleTargets}
+          targets={visibleTargets}
           times={response.times_utc}
           centerTime={response.metadata.center_time_utc}
           minimumAltitude={minimumAltitude}
@@ -538,9 +521,9 @@ function Results({
         <div className="science-note">
           <span aria-hidden="true">i</span>
           <p>
-            <strong>읽는 법</strong> 포함 천체는 입력 기준 시각에 가장 가까운 계산 샘플에서
-            선택한 모든 관측지의 고도가 동시에 {minimumAltitude}° 이상입니다. 그래프의 다른
-            시각에서도 항상 관측 가능하다는 뜻은 아니며, 세로 강조선은 해당 중심 샘플입니다.
+            <strong>읽는 법</strong> 포함 천체는 계산 시간창 안의 하나 이상의 계산 샘플에서 선택한
+            모든 관측지의 고도가 동시에 {minimumAltitude}° 이상입니다. 시간창의 모든 시각에
+            관측 가능하다는 뜻은 아니며, 세로 참조선은 입력한 중심 UTC에 가장 가까운 샘플입니다.
           </p>
         </div>
       </section>

@@ -112,7 +112,7 @@ export function VisibilityOverviewChart({
   }
 
   if (pointCount === 0 || targets.length === 0) {
-    return <div className="chart-empty">중심 시각에 공통으로 보이는 천체가 없습니다.</div>
+    return <div className="chart-empty">선택한 시간창에 동시 관측 가능한 천체가 없습니다.</div>
   }
 
   const safeActiveIndex = activeIndex === null ? null : clamp(activeIndex, 0, pointCount - 1)
@@ -159,7 +159,7 @@ export function VisibilityOverviewChart({
           ))}
           <span className="legend-item">
             <span className="legend-center-line" aria-hidden="true" />
-            중심 UTC
+            중심 UTC 참조선
           </span>
           <span className="legend-item">
             <span className="legend-threshold" aria-hidden="true" />
@@ -172,13 +172,14 @@ export function VisibilityOverviewChart({
         <svg
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           role="img"
-          aria-labelledby={`${chartId}-title ${chartId}-description`}
+          aria-labelledby={`${chartId}-title`}
+          aria-describedby={`${chartId}-description`}
         >
           <title id={`${chartId}-title`}>공통 가시 천체 전체 시간–고도 개요</title>
           <desc id={`${chartId}-description`}>
-            입력 기준 시각에 모든 선택 관측지에서 최소 고도 {minimumAltitude}도 이상인 천체
-            {targets.length}개의 기하학적 고도를 비교합니다. 색은 천체, 선 모양은 관측지를
-            구분하며 세로선은 중심 UTC, 붉은 점선은 최소 고도입니다.
+            선택한 전체 시간창의 하나 이상의 계산 샘플에서 모든 선택 관측지의 고도가 동시에
+            최소 고도 {minimumAltitude}도 이상인 천체 {targets.length}개의 기하학적 고도를 비교합니다.
+            색은 천체, 선 모양은 관측지를 구분하며 세로 참조선은 중심 UTC, 붉은 점선은 최소 고도입니다.
           </desc>
           <clipPath id={`${chartId}-clip`}>
             <rect x={MARGIN.left} y={MARGIN.top} width={PLOT_WIDTH} height={PLOT_HEIGHT} />
