@@ -7,7 +7,7 @@ export interface ObserverLocation {
 }
 
 export interface VisibilityRequest {
-  locations: [ObserverLocation, ObserverLocation]
+  locations: ObserverLocation[]
   center_time_utc: string
   hours_before: number
   hours_after: number
@@ -52,6 +52,7 @@ export interface CalculationMetadata {
   hours_after: number
   step_minutes: number
   sample_count: number
+  location_count: number
   target_count: number
   minimum_altitude_deg: number
   coordinate_frame: string

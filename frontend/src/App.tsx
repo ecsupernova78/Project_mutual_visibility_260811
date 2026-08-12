@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { calculateVisibility } from './api'
 import { AltitudeChart } from './components/AltitudeChart'
+import { VisibilityOverviewChart } from './components/VisibilityOverviewChart'
 import type {
   ObserverLocation,
   VisibilityRequest,
@@ -23,7 +24,7 @@ const CATALOG_TARGETS: CatalogTarget[] = [
   { id: '3c134', name: '3C134', coordinate: '05h 04m · +38° 06′' },
 ]
 
-const INITIAL_LOCATIONS: [ObserverLocation, ObserverLocation] = [
+const INITIAL_LOCATIONS: ObserverLocation[] = [
   {
     id: 'narrabri',
     name: 'Narrabri',
@@ -37,6 +38,13 @@ const INITIAL_LOCATIONS: [ObserverLocation, ObserverLocation] = [
     latitude_deg: 37.36889,
     longitude_deg: 128.39028,
     elevation_m: 700,
+  },
+  {
+    id: 'fushan',
+    name: 'Fushan',
+    latitude_deg: 24.7564722222,
+    longitude_deg: 121.5816388889,
+    elevation_m: 0,
   },
 ]
 
@@ -71,6 +79,16 @@ function formatCoordinate(value: number, type: 'ra' | 'dec') {
   return `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}°`
 }
 
+function nearestTimeIndex(times: string[], targetTime: string) {
+  const target = new Date(targetTime).getTime()
+  if (!Number.isFinite(target) || times.length === 0) return 0
+  return times.reduce((nearest, time, index) => {
+    const distance = Math.abs(new Date(time).getTime() - target)
+    const nearestDistance = Math.abs(new Date(times[nearest]).getTime() - target)
+    return distance < nearestDistance ? index : nearest
+  }, 0)
+}
+
 function NumericInput({
   id,
   label,
@@ -80,6 +98,8 @@ function NumericInput({
   step,
   suffix,
   help,
+  required = true,
+  disabled = false,
   onChange,
 }: {
   id: string
@@ -87,9 +107,11 @@ function NumericInput({
   value: number
   min: number
   max: number
-  step: number
+  step: number | 'any'
   suffix?: string
   help?: string
+  required?: boolean
+  disabled?: boolean
   onChange: (value: number) => void
 }) {
   const helpId = help ? `${id}-help` : undefined
@@ -108,7 +130,8 @@ function NumericInput({
           max={max}
           step={step}
           aria-describedby={helpId}
-          required
+          required={required}
+          disabled={disabled}
           onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
         />
         {suffix && <span className="input-suffix">{suffix}</span>}
@@ -120,32 +143,50 @@ function NumericInput({
 function LocationEditor({
   location,
   index,
+  selected,
+  onToggle,
   onChange,
 }: {
   location: ObserverLocation
   index: number
+  selected: boolean
+  onToggle: () => void
   onChange: (next: ObserverLocation) => void
 }) {
   const prefix = `location-${index}`
+  const label = String.fromCharCode(65 + index)
   return (
-    <section className="location-card" aria-labelledby={`${prefix}-title`}>
+    <section
+      className={`location-card ${selected ? 'is-selected' : 'is-unselected'}`}
+      aria-labelledby={`${prefix}-title`}
+    >
       <div className="location-heading">
         <span className={`site-marker marker-${index + 1}`} aria-hidden="true">
           {index + 1}
         </span>
         <div>
-          <p className="eyebrow">관측지 {index === 0 ? 'A' : 'B'}</p>
+          <p className="eyebrow">관측지 {label}</p>
           <label id={`${prefix}-title`} className="location-name-label">
-            <span className="sr-only">관측지 {index === 0 ? 'A' : 'B'} 이름</span>
+            <span className="sr-only">관측지 {label} 이름</span>
             <input
               type="text"
               value={location.name}
               maxLength={80}
-              required
+              required={selected}
+              disabled={!selected}
               onChange={(event) => onChange({ ...location, name: event.currentTarget.value })}
             />
           </label>
         </div>
+        <label className="location-toggle">
+          <input
+            type="checkbox"
+            checked={selected}
+            aria-label={`${location.name} 관측에 포함`}
+            onChange={onToggle}
+          />
+          <span aria-hidden="true">{selected ? '포함' : '제외'}</span>
+        </label>
       </div>
       <div className="coordinate-grid">
         <NumericInput
@@ -155,8 +196,10 @@ function LocationEditor({
           value={location.latitude_deg}
           min={-90}
           max={90}
-          step={0.00001}
+          step="any"
           suffix="°"
+          required={selected}
+          disabled={!selected}
           onChange={(latitude_deg) => onChange({ ...location, latitude_deg })}
         />
         <NumericInput
@@ -166,8 +209,10 @@ function LocationEditor({
           value={location.longitude_deg}
           min={-180}
           max={180}
-          step={0.00001}
+          step="any"
           suffix="°"
+          required={selected}
+          disabled={!selected}
           onChange={(longitude_deg) => onChange({ ...location, longitude_deg })}
         />
         <NumericInput
@@ -178,9 +223,14 @@ function LocationEditor({
           max={10000}
           step={1}
           suffix="m"
+          required={selected}
+          disabled={!selected}
           onChange={(elevation_m) => onChange({ ...location, elevation_m })}
         />
       </div>
+      {location.id === 'fushan' && (
+        <p className="location-note">제공된 좌표 적용 · 해발고도 미지정으로 기본 0 m</p>
+      )}
     </section>
   )
 }
@@ -191,8 +241,8 @@ function ResultSkeleton() {
       <span className="loader-orbit" aria-hidden="true">
         <span />
       </span>
-      <h2>두 하늘을 겹쳐 보는 중</h2>
-      <p>각 시각의 좌표를 변환하고 공통 가시 샘플을 계산하고 있습니다.</p>
+      <h2>선택한 하늘을 겹쳐 보는 중</h2>
+      <p>각 관측지의 좌표를 변환하고 공통 가시 샘플을 계산하고 있습니다.</p>
       <div className="skeleton-chart" aria-hidden="true">
         <i />
         <i />
@@ -212,15 +262,17 @@ function IntroState() {
         <span className="orbit-core" />
       </div>
       <p className="eyebrow">첫 번째 관측 계획</p>
-      <h2>서로 다른 두 장소,<br />하나의 공통 하늘</h2>
+      <h2>원하는 관측지를 골라<br />하나의 공통 하늘로</h2>
       <p>
-        좌표와 UTC 시각을 확인한 뒤 계산하면, 두 관측지에서 동시에 최소 고도 이상인
+        한 곳부터 세 곳까지 선택하면, 선택한 모든 관측지에서 동시에 최소 고도 이상인
         천체를 시간축에서 비교합니다.
       </p>
       <div className="intro-key">
         <span><b>A</b> Narrabri</span>
         <i aria-hidden="true" />
         <span><b>B</b> 평창</span>
+        <i aria-hidden="true" />
+        <span><b>C</b> Fushan</span>
       </div>
     </div>
   )
@@ -240,14 +292,20 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   )
 }
 
-function EmptyState({ minimumAltitude }: { minimumAltitude: number }) {
+function EmptyState({
+  minimumAltitude,
+  locationCount,
+}: {
+  minimumAltitude: number
+  locationCount: number
+}) {
   return (
     <div className="result-state empty-state" role="status">
       <span className="state-symbol" aria-hidden="true">0</span>
       <p className="eyebrow">동시 가시 천체 0개</p>
       <h2>이 시간창에는 공통 천체가 없습니다</h2>
       <p>
-        선택한 천체 중 두 관측지 모두에서 {minimumAltitude}° 이상인 샘플이 없습니다.
+        선택한 천체 중 {locationCount}개 관측지 모두에서 {minimumAltitude}° 이상인 샘플이 없습니다.
         시간 범위를 넓히거나 최소 고도를 낮춰 보세요.
       </p>
     </div>
@@ -299,9 +357,23 @@ function Results({
   minimumAltitude: number
 }) {
   const visibleTargets = response.targets.filter((target) => target.simultaneous_visible)
+  const centerIndex = nearestTimeIndex(
+    response.times_utc,
+    response.metadata.center_time_utc,
+  )
+  const centerVisibleTargets = response.targets.filter(
+    (candidate) => candidate.simultaneous_mask[centerIndex] === true,
+  )
   const target = visibleTargets.find((candidate) => candidate.id === selectedId) ?? visibleTargets[0]
 
-  if (!target) return <EmptyState minimumAltitude={minimumAltitude} />
+  if (!target) {
+    return (
+      <EmptyState
+        minimumAltitude={minimumAltitude}
+        locationCount={response.locations.length || 1}
+      />
+    )
+  }
 
   return (
     <div className="results-content">
@@ -318,6 +390,9 @@ function Results({
           <i aria-hidden="true">→</i>
           <span>{formatUtcDateTime(response.times_utc.at(-1) ?? '')}</span>
         </div>
+        <a className="overview-jump" href="#common-visibility-overview">
+          전체 개요로 이동 <span aria-hidden="true">↓</span>
+        </a>
       </header>
 
       <div className="target-results" role="tablist" aria-label="동시 가시 천체 선택">
@@ -366,9 +441,43 @@ function Results({
         <div className="science-note">
           <span aria-hidden="true">i</span>
           <p>
-            <strong>판정 기준</strong> 두 장소의 기하학적 고도가 모두 {minimumAltitude}° 이상인
+            <strong>판정 기준</strong> 선택한 {target.location_series.length}개 관측지의 기하학적 고도가 모두 {minimumAltitude}° 이상인
             샘플과 연속 샘플 묶음을 강조합니다. 샘플 사이 모든 순간의 가시성을 보장하지 않으며,
             대기 굴절(pressure=0), 지형, 날씨와 일광은 반영하지 않습니다.
+          </p>
+        </div>
+      </section>
+
+      <section
+        id="common-visibility-overview"
+        className="chart-panel overview-panel"
+        aria-labelledby="overview-title"
+      >
+        <header className="chart-heading overview-heading">
+          <div>
+            <span className="object-type">TARGETS AT THE CENTER UTC SAMPLE</span>
+            <h3 id="overview-title">중심 시각 공통 하늘</h3>
+            <p>
+              입력한 기준 시각에 가장 가까운 샘플({formatUtcDateTime(response.times_utc[centerIndex])})에서
+              모든 선택 관측지의 고도가 {minimumAltitude}° 이상인 천체의 전체 시간–고도 궤적입니다.
+            </p>
+          </div>
+          <span className="overview-count">{centerVisibleTargets.length}개 천체</span>
+        </header>
+
+        <VisibilityOverviewChart
+          targets={centerVisibleTargets}
+          times={response.times_utc}
+          centerTime={response.metadata.center_time_utc}
+          minimumAltitude={minimumAltitude}
+        />
+
+        <div className="science-note">
+          <span aria-hidden="true">i</span>
+          <p>
+            <strong>읽는 법</strong> 포함 천체는 입력 기준 시각에 가장 가까운 계산 샘플에서
+            선택한 모든 관측지의 고도가 동시에 {minimumAltitude}° 이상입니다. 그래프의 다른
+            시각에서도 항상 관측 가능하다는 뜻은 아니며, 세로 강조선은 해당 중심 샘플입니다.
           </p>
         </div>
       </section>
@@ -377,8 +486,9 @@ function Results({
 }
 
 export default function App() {
-  const [locations, setLocations] = useState<[ObserverLocation, ObserverLocation]>(
-    INITIAL_LOCATIONS,
+  const [locations, setLocations] = useState<ObserverLocation[]>(INITIAL_LOCATIONS)
+  const [selectedLocationIds, setSelectedLocationIds] = useState(
+    () => new Set(['narrabri', 'pyeongchang']),
   )
   const [centerTime, setCenterTime] = useState(initialUtcInput)
   const [hoursBefore, setHoursBefore] = useState(6)
@@ -393,19 +503,41 @@ export default function App() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [selectionError, setSelectionError] = useState(false)
+  const [locationSelectionError, setLocationSelectionError] = useState(false)
   const activeRequest = useRef<AbortController | null>(null)
 
   useEffect(() => () => activeRequest.current?.abort(), [])
 
+  const invalidateResults = () => {
+    activeRequest.current?.abort()
+    setResponse(null)
+    setSelectedResultId(null)
+    setStatus('idle')
+    setError(null)
+  }
+
   const updateLocation = (index: number, next: ObserverLocation) => {
+    invalidateResults()
     setLocations((current) => {
-      const copy = [...current] as [ObserverLocation, ObserverLocation]
+      const copy = [...current]
       copy[index] = next
       return copy
     })
   }
 
+  const toggleLocation = (id: string) => {
+    invalidateResults()
+    setSelectedLocationIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      if (next.size > 0) setLocationSelectionError(false)
+      return next
+    })
+  }
+
   const toggleTarget = (id: string) => {
+    invalidateResults()
     setSelectedTargetIds((current) => {
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
@@ -417,6 +549,10 @@ export default function App() {
 
   const handleSubmit = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault()
+    if (selectedLocationIds.size === 0) {
+      setLocationSelectionError(true)
+      return
+    }
     if (selectedTargetIds.size === 0) {
       setSelectionError(true)
       return
@@ -439,7 +575,7 @@ export default function App() {
     setError(null)
 
     const payload: VisibilityRequest = {
-      locations,
+      locations: locations.filter((location) => selectedLocationIds.has(location.id)),
       center_time_utc: toUtcIso(centerTime),
       hours_before: hoursBefore,
       hours_after: hoursAfter,
@@ -471,7 +607,7 @@ export default function App() {
           <span className="brand-mark" aria-hidden="true"><i /></span>
           <span><b>공통하늘</b><small>Mutual Sky</small></span>
         </a>
-        <p className="topbar-description">두 관측지의 천체 가시성 비교</p>
+        <p className="topbar-description">선택한 관측지의 천체 가시성 비교</p>
         <span className="utc-badge"><i aria-hidden="true" />모든 시각은 UTC</span>
       </header>
 
@@ -489,25 +625,20 @@ export default function App() {
             <fieldset disabled={status === 'loading'}>
               <legend className="section-legend"><span>01</span>관측 위치</legend>
               <div className="locations-stack">
-                <LocationEditor
-                  location={locations[0]}
-                  index={0}
-                  onChange={(next) => updateLocation(0, next)}
-                />
-                <button
-                  type="button"
-                  className="swap-button"
-                  onClick={() => setLocations(([first, second]) => [second, first])}
-                  aria-label="관측지 A와 B 위치 교환"
-                >
-                  <span aria-hidden="true">⇅</span> 위치 교환
-                </button>
-                <LocationEditor
-                  location={locations[1]}
-                  index={1}
-                  onChange={(next) => updateLocation(1, next)}
-                />
+                {locations.map((location, index) => (
+                  <LocationEditor
+                    key={location.id}
+                    location={location}
+                    index={index}
+                    selected={selectedLocationIds.has(location.id)}
+                    onToggle={() => toggleLocation(location.id)}
+                    onChange={(next) => updateLocation(index, next)}
+                  />
+                ))}
               </div>
+              {locationSelectionError && (
+                <p className="field-error" role="alert">관측지를 하나 이상 선택해 주세요.</p>
+              )}
             </fieldset>
 
             <fieldset disabled={status === 'loading'}>
@@ -525,7 +656,10 @@ export default function App() {
                       value={centerTime}
                       aria-describedby="center-time-help"
                       required
-                      onChange={(event) => setCenterTime(event.currentTarget.value)}
+                      onChange={(event) => {
+                        invalidateResults()
+                        setCenterTime(event.currentTarget.value)
+                      }}
                     />
                     <span className="input-suffix">UTC</span>
                   </span>
@@ -538,7 +672,10 @@ export default function App() {
                   max={72}
                   step={0.25}
                   suffix="시간"
-                  onChange={setHoursBefore}
+                  onChange={(value) => {
+                    invalidateResults()
+                    setHoursBefore(value)
+                  }}
                 />
                 <NumericInput
                   id="hours-after"
@@ -548,7 +685,10 @@ export default function App() {
                   max={72}
                   step={0.25}
                   suffix="시간"
-                  onChange={setHoursAfter}
+                  onChange={(value) => {
+                    invalidateResults()
+                    setHoursAfter(value)
+                  }}
                 />
                 <NumericInput
                   id="step-minutes"
@@ -558,7 +698,10 @@ export default function App() {
                   max={180}
                   step={1}
                   suffix="분"
-                  onChange={setStepMinutes}
+                  onChange={(value) => {
+                    invalidateResults()
+                    setStepMinutes(value)
+                  }}
                 />
                 <NumericInput
                   id="minimum-altitude"
@@ -568,7 +711,10 @@ export default function App() {
                   max={90}
                   step={1}
                   suffix="°"
-                  onChange={setMinimumAltitude}
+                  onChange={(value) => {
+                    invalidateResults()
+                    setMinimumAltitude(value)
+                  }}
                 />
               </div>
             </fieldset>
@@ -580,13 +726,17 @@ export default function App() {
                 <button
                   type="button"
                   className="text-button"
-                  onClick={() =>
+                  onClick={() => {
+                    invalidateResults()
+                    if (selectedTargetIds.size !== CATALOG_TARGETS.length) {
+                      setSelectionError(false)
+                    }
                     setSelectedTargetIds(
                       selectedTargetIds.size === CATALOG_TARGETS.length
                         ? new Set()
                         : new Set(CATALOG_TARGETS.map((target) => target.id)),
                     )
-                  }
+                  }}
                 >
                   {selectedTargetIds.size === CATALOG_TARGETS.length ? '전체 해제' : '전체 선택'}
                 </button>
@@ -616,7 +766,7 @@ export default function App() {
               {status === 'loading' ? (
                 <><span className="button-spinner" aria-hidden="true" />계산 중…</>
               ) : (
-                <><span aria-hidden="true">✦</span>동시 가시성 계산</>
+                <><span aria-hidden="true">✦</span>공통 가시성 계산</>
               )}
             </button>
           </form>

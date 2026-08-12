@@ -100,7 +100,9 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                 )
             )
 
-        common_altitudes = np.minimum(altitude_arrays[0], altitude_arrays[1])
+        # The common altitude is the limiting (lowest) altitude across every
+        # selected location. This definition also naturally covers one site.
+        common_altitudes = np.min(np.stack(altitude_arrays), axis=0)
         simultaneous_mask = common_altitudes >= request.minimum_altitude_deg
         intervals = _visible_intervals(times, simultaneous_mask, common_altitudes)
 
@@ -132,6 +134,7 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
             hours_after=request.hours_after,
             step_minutes=request.step_minutes,
             sample_count=len(times),
+            location_count=len(request.locations),
             target_count=len(target_results),
             minimum_altitude_deg=request.minimum_altitude_deg,
         ),

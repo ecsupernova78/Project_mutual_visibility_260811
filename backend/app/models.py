@@ -47,7 +47,11 @@ class Location(ApiModel):
 
 
 class VisibilityRequest(ApiModel):
-    locations: list[Location] = Field(min_length=2, max_length=2)
+    locations: list[Location] = Field(
+        min_length=1,
+        max_length=3,
+        description="One to three observing locations used for the common-visibility calculation.",
+    )
     center_time_utc: datetime
     hours_before: float = Field(gt=0.0, le=MAX_WINDOW_HOURS)
     hours_after: float = Field(gt=0.0, le=MAX_WINDOW_HOURS)
@@ -142,6 +146,7 @@ class CalculationMetadata(ApiModel):
     hours_after: float
     step_minutes: int
     sample_count: int
+    location_count: int
     target_count: int
     minimum_altitude_deg: float
     coordinate_frame: str = "icrs"
@@ -151,7 +156,7 @@ class CalculationMetadata(ApiModel):
     longitude_convention: str = "east-positive degrees in [-180, 180)"
     visibility_definition: str = (
         "At a sampled UTC instant, geometric AltAz altitude (pressure=0; refraction ignored) "
-        "is greater than or equal to minimum_altitude_deg at both locations."
+        "is greater than or equal to minimum_altitude_deg at every selected location."
     )
     interval_definition: str = (
         "A visible interval is a run of consecutive visible samples; visibility between samples is not asserted."

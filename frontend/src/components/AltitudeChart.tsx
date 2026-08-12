@@ -1,6 +1,7 @@
-import { useId, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useId, useState, type PointerEvent } from 'react'
 
 import type { VisibilityTarget } from '../types'
+import { getSiteChartStyle } from './chartStyles'
 
 interface AltitudeChartProps {
   target: VisibilityTarget
@@ -16,8 +17,6 @@ const PLOT_HEIGHT = HEIGHT - MARGIN.top - MARGIN.bottom
 const Y_MIN = -90
 const Y_MAX = 90
 const Y_TICKS = [-90, -60, -30, 0, 30, 60, 90]
-const SERIES_COLORS = ['#62dbe7', '#ffbd73']
-
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(Math.max(value, minimum), maximum)
 }
@@ -105,18 +104,7 @@ export function AltitudeChart({
     moveToIndex(event.clientX, event.currentTarget)
   }
 
-  const handleKeyDown = (event: KeyboardEvent<SVGRectElement>) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-    event.preventDefault()
-    setActiveIndex((current) => {
-      if (event.key === 'Home') return 0
-      if (event.key === 'End') return Math.max(pointCount - 1, 0)
-      const base = current ?? 0
-      return clamp(base + (event.key === 'ArrowRight' ? 1 : -1), 0, pointCount - 1)
-    })
-  }
-
-  if (pointCount === 0 || target.location_series.length < 2) {
+  if (pointCount === 0 || target.location_series.length === 0) {
     return (
       <div className="chart-empty" role="status">
         그래프로 표시할 고도 데이터가 없습니다.
@@ -132,11 +120,12 @@ export function AltitudeChart({
   return (
     <div className="altitude-chart">
       <div className="chart-legend" aria-label="그래프 범례">
-        {target.location_series.slice(0, 2).map((series, index) => (
+        {target.location_series.map((series, index) => (
           <span className="legend-item" key={series.location_id}>
             <span
-              className={`legend-line ${index === 1 ? 'is-dashed' : ''}`}
-              style={{ '--legend-color': SERIES_COLORS[index] } as React.CSSProperties}
+              className="legend-line"
+              style={{ '--legend-color': getSiteChartStyle(series.location_id, index).color } as React.CSSProperties}
+              data-dash={getSiteChartStyle(series.location_id, index).kind}
               aria-hidden="true"
             />
             {series.location_name}
@@ -160,7 +149,7 @@ export function AltitudeChart({
         >
           <title id={`${patternId}-title`}>{target.name} 시간–고도 그래프</title>
           <desc id={`${patternId}-description`}>
-            UTC 시각에 따른 두 관측지의 기하학적 고도와 최소 고도 {minimumAltitude}도를
+            UTC 시각에 따른 {target.location_series.length}개 관측지의 기하학적 고도와 최소 고도 {minimumAltitude}도를
             비교합니다. 음수 고도는 지평선 아래를 뜻합니다.
           </desc>
           <defs>
@@ -234,14 +223,14 @@ export function AltitudeChart({
               className="threshold-line"
             />
 
-            {paths.slice(0, 2).map((path, index) => (
+            {paths.map((path, index) => (
               <path
                 key={target.location_series[index].location_id}
                 d={path}
                 fill="none"
-                stroke={SERIES_COLORS[index]}
+                stroke={getSiteChartStyle(target.location_series[index].location_id, index).color}
                 strokeWidth="2.8"
-                strokeDasharray={index === 1 ? '9 6' : undefined}
+                strokeDasharray={getSiteChartStyle(target.location_series[index].location_id, index).dash}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
@@ -280,7 +269,7 @@ export function AltitudeChart({
 
           {tooltipVisible && safeActiveIndex !== null && activeX !== null && (
             <g className="chart-tooltip" pointerEvents="none">
-              {target.location_series.slice(0, 2).map((series, index) => {
+              {target.location_series.map((series, index) => {
                 const altitude = series.altitudes_deg[safeActiveIndex]
                 return Number.isFinite(altitude) ? (
                   <circle
@@ -288,22 +277,28 @@ export function AltitudeChart({
                     cx={activeX}
                     cy={y(altitude)}
                     r="5"
-                    fill={SERIES_COLORS[index]}
+                    fill={getSiteChartStyle(series.location_id, index).color}
                     stroke="#07111f"
                     strokeWidth="2"
                   />
                 ) : null
               })}
-              <rect x={tooltipX} y={32} width="202" height="88" rx="10" />
+              <rect
+                x={tooltipX}
+                y={32}
+                width="202"
+                height={46 + target.location_series.length * 21}
+                rx="10"
+              />
               <text x={tooltipX + 13} y={54} className="tooltip-time">
                 {formatUtcTick(times[safeActiveIndex], true)} UTC
               </text>
-              {target.location_series.slice(0, 2).map((series, index) => (
+              {target.location_series.map((series, index) => (
                 <text
                   key={series.location_id}
                   x={tooltipX + 13}
                   y={78 + index * 21}
-                  fill={SERIES_COLORS[index]}
+                  fill={getSiteChartStyle(series.location_id, index).color}
                   className="tooltip-value"
                 >
                   {series.location_name}: {series.altitudes_deg[safeActiveIndex]?.toFixed(1) ?? '—'}°
@@ -318,20 +313,7 @@ export function AltitudeChart({
             width={PLOT_WIDTH}
             height={PLOT_HEIGHT}
             fill="transparent"
-            tabIndex={0}
-            role="slider"
-            aria-label="시간별 고도 탐색"
-            aria-valuemin={0}
-            aria-valuemax={pointCount - 1}
-            aria-valuenow={safeActiveIndex ?? 0}
-            aria-valuetext={
-              safeActiveIndex === null
-                ? '방향키로 시간별 고도를 탐색하세요'
-                : `${formatUtcTick(times[safeActiveIndex], true)} UTC`
-            }
-            onFocus={() => setActiveIndex((current) => current ?? 0)}
-            onBlur={() => setActiveIndex(null)}
-            onKeyDown={handleKeyDown}
+            aria-hidden="true"
             onPointerMove={handlePointerMove}
             onPointerLeave={() => setActiveIndex(null)}
             className="chart-hit-area"
@@ -339,14 +321,30 @@ export function AltitudeChart({
         </svg>
       </div>
 
-      <p className="chart-hint">그래프를 가리키거나 초점을 둔 뒤 방향키로 샘플 값을 확인하세요.</p>
+      <label className="chart-scrubber">
+        <span>시간 샘플 탐색</span>
+        <input
+          type="range"
+          min={0}
+          max={pointCount - 1}
+          step={1}
+          value={safeActiveIndex ?? 0}
+          aria-label="시간 샘플 탐색"
+          aria-valuetext={`${formatUtcTick(times[safeActiveIndex ?? 0], true)} UTC`}
+          onFocus={() => setActiveIndex((current) => current ?? 0)}
+          onChange={(event) => setActiveIndex(Number(event.currentTarget.value))}
+        />
+        <output>{formatUtcTick(times[safeActiveIndex ?? 0], true)} UTC</output>
+      </label>
+
+      <p className="chart-hint">그래프를 가리키거나 시간 탐색 슬라이더로 샘플 값을 확인하세요.</p>
 
       <table className="sr-only">
         <caption>{target.name} 시간별 고도 데이터, UTC 기준</caption>
         <thead>
           <tr>
             <th>UTC 시각</th>
-            {target.location_series.slice(0, 2).map((series) => (
+            {target.location_series.map((series) => (
               <th key={series.location_id}>{series.location_name} 고도</th>
             ))}
             <th>동시 가시 샘플</th>
@@ -356,7 +354,7 @@ export function AltitudeChart({
           {times.map((time, index) => (
             <tr key={time}>
               <td>{time}</td>
-              {target.location_series.slice(0, 2).map((series) => (
+              {target.location_series.map((series) => (
                 <td key={series.location_id}>{series.altitudes_deg[index]}도</td>
               ))}
               <td>{target.simultaneous_mask[index] ? '예' : '아니요'}</td>

@@ -27,7 +27,10 @@ def _cors_origins() -> list[str]:
 app = FastAPI(
     title="Mutual Visibility API",
     version=__version__,
-    description="Altitude series for celestial targets observed from exactly two locations.",
+    description=(
+        "Altitude series for celestial targets observed from one to three locations, "
+        "with common visibility evaluated across every selected location."
+    ),
 )
 app.add_middleware(
     CORSMiddleware,
