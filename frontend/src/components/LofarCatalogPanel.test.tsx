@@ -17,6 +17,19 @@ function makeSource(index: number) {
     dec_dms: '+45:12:34',
     total_flux_mjy: 1200 - index,
     peak_flux_mjy: 950 - index,
+    aliases: [],
+    morphology_code: null,
+    morphology_label: null,
+    morphology_description: null,
+    separation_arcmin: null,
+    counterpart_name: null,
+    counterpart_aliases: [],
+    object_type_code: null,
+    object_type_label: null,
+    object_type_description: null,
+    crossmatch_separation_arcsec: null,
+    crossmatch_confidence: null,
+    crossmatch_catalog: null,
   }
 }
 
@@ -39,10 +52,16 @@ function response({
     coordinate_frame: 'icrs',
     reference_frequency_mhz: 144,
     tap_mode: 'async',
+    search_mode: 'brightness',
+    enrichment_status: 'complete',
+    enrichment_warning: null,
     sort_by: sortBy,
     sort_direction: sortDirection,
     limit,
     source_prefix: sourcePrefix,
+    center_ra_deg: null,
+    center_dec_deg: null,
+    radius_arcmin: null,
     result_count: sources.length,
     sources,
   }), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -186,5 +205,187 @@ describe('LofarCatalogPanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
     expect(await screen.findByRole('checkbox', { name: `${source.name} 계산 대상에서 제거` })).toBeChecked()
+  })
+
+  it('cone search 조건을 전용 endpoint로 보내고 친숙한 이름·전파 형태·SIMBAD 유형을 표시한다', async () => {
+    const user = userEvent.setup()
+    const source = {
+      ...makeSource(0),
+      name: '3C 123',
+      aliases: ['3C123'],
+      morphology_code: 'M',
+      morphology_label: '복수 Gaussian',
+      morphology_description: '복수 Gaussian으로 구성된 source',
+      separation_arcmin: 0.08,
+      counterpart_name: 'NAME Per B',
+      counterpart_aliases: ['3C 123'],
+      object_type_code: 'SyG',
+      object_type_label: 'Seyfert Galaxy',
+      object_type_description: 'Seyfert galaxy',
+      crossmatch_separation_arcsec: 0.94,
+      crossmatch_confidence: 'high',
+      crossmatch_catalog: 'SIMBAD',
+    } as const
+    const onToggleSource = vi.fn()
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      catalog: 'lofar_dr3',
+      catalog_release: 'LoTSS DR3 v1.0',
+      coordinate_frame: 'icrs',
+      reference_frequency_mhz: 144,
+      tap_mode: 'async',
+      search_mode: 'cone',
+      enrichment_status: 'complete',
+      enrichment_warning: null,
+      sort_by: 'distance',
+      sort_direction: 'asc',
+      limit: 100,
+      source_prefix: null,
+      center_ra_deg: 69.26825,
+      center_dec_deg: 29.67052,
+      radius_arcmin: 5,
+      result_count: 1,
+      sources: [source],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    render(
+      <LofarCatalogPanel
+        hidden={false}
+        selectedSourceIds={new Set()}
+        selectedTargetCount={5}
+        maximumTargetCount={25}
+        onToggleSource={onToggleSource}
+        onGoToVisibility={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('radio', { name: /좌표 주변 검색/ }))
+    await user.type(screen.getByLabelText('중심 RA (deg)'), '69.26825')
+    await user.type(screen.getByLabelText('중심 Dec (deg)'), '29.67052')
+    await user.click(screen.getByText('실행할 TAP 쿼리 보기'))
+    expect(screen.getByText((_, element) => (
+      element?.tagName === 'CODE'
+      && element.textContent?.includes("DISTANCE(POINT('ICRS', RA, DEC)") === true
+      && element.textContent.includes("CIRCLE('ICRS', 69.26825, 29.67052, 5/60.0)")
+    ))).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '좌표 주변 천체 검색' }))
+
+    expect(await screen.findByText('3C 123', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText('LoTSS · ILTJ123400.0+451234')).toBeInTheDocument()
+    expect(screen.getByText('M — 복수 Gaussian')).toBeInTheDocument()
+    expect(screen.getByText('Seyfert Galaxy (SyG)')).toBeInTheDocument()
+    expect(screen.getByText('0.94″ 위치 후보')).toBeInTheDocument()
+    expect(screen.getByText('0.08′')).toBeInTheDocument()
+
+    const queryUrl = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost')
+    expect(queryUrl.pathname).toBe('/api/v1/catalogs/lotss-dr3/cone')
+    expect(Object.fromEntries(queryUrl.searchParams)).toEqual({
+      ra_deg: '69.26825',
+      dec_deg: '29.67052',
+      radius_arcmin: '5',
+      sort_by: 'distance',
+      sort_direction: 'asc',
+      limit: '100',
+    })
+
+    await user.click(screen.getByRole('checkbox', { name: '3C 123 계산 대상에 추가' }))
+    expect(onToggleSource).toHaveBeenCalledWith(source)
+    await user.click(screen.getByText('Source 유형 코드표와 위치 대응 기준'))
+    expect(screen.getByText('단일 Gaussian')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'SIMBAD 공식 유형 코드표' })).toHaveAttribute(
+      'href',
+      'https://simbad.cds.unistra.fr/Pages/guide/otypes_desc.htx',
+    )
+  })
+
+  it('검색 방식별 입력과 결과를 독립적으로 보존하고 잘못된 cone 범위는 요청 전에 차단한다', async () => {
+    const user = userEvent.setup()
+    const browseSource = makeSource(1)
+    const coneSource = { ...makeSource(2), separation_arcmin: 1.5 }
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(response({ sources: [browseSource], sourcePrefix: 'ILTJ1234' }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        catalog: 'lofar_dr3',
+        catalog_release: 'LoTSS DR3 v1.0',
+        coordinate_frame: 'icrs',
+        reference_frequency_mhz: 144,
+        tap_mode: 'async',
+        search_mode: 'cone',
+        enrichment_status: 'unavailable',
+        enrichment_warning: 'SIMBAD service unavailable',
+        sort_by: 'distance',
+        sort_direction: 'asc',
+        limit: 100,
+        source_prefix: null,
+        center_ra_deg: 10,
+        center_dec_deg: -20,
+        radius_arcmin: 3,
+        result_count: 1,
+        sources: [coneSource],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    renderPanel()
+
+    await user.type(screen.getByLabelText('Source ID 앞부분 (선택)'), 'ILTJ1234')
+    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
+    expect(await screen.findByText(browseSource.source_id, { selector: 'strong' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('radio', { name: /좌표 주변 검색/ }))
+    await user.type(screen.getByLabelText('중심 RA (deg)'), '360')
+    await user.type(screen.getByLabelText('중심 Dec (deg)'), '-20')
+    await user.clear(screen.getByLabelText('검색 반경 (arcmin)'))
+    await user.type(screen.getByLabelText('검색 반경 (arcmin)'), '61')
+    await user.click(screen.getByRole('button', { name: '좌표 주변 천체 검색' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('RA 0° 이상 360° 미만')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    await user.clear(screen.getByLabelText('중심 RA (deg)'))
+    await user.type(screen.getByLabelText('중심 RA (deg)'), '10')
+    await user.clear(screen.getByLabelText('검색 반경 (arcmin)'))
+    await user.type(screen.getByLabelText('검색 반경 (arcmin)'), '3')
+    await user.click(screen.getByRole('button', { name: '좌표 주변 천체 검색' }))
+    expect(await screen.findByText(coneSource.source_id, { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText('SIMBAD 이름·유형 보강 사용 불가')).toBeInTheDocument()
+    expect(screen.getByText('SIMBAD service unavailable')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('radio', { name: /밝기 순 목록/ }))
+    expect(screen.getByLabelText('Source ID 앞부분 (선택)')).toHaveValue('ILTJ1234')
+    expect(screen.getByText(browseSource.source_id, { selector: 'strong' })).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('친숙한 이름이 없는 source와 부분 보강 결과를 오해 없이 표시한다', async () => {
+    const user = userEvent.setup()
+    const source = {
+      ...makeSource(0),
+      morphology_code: 'S' as const,
+      morphology_label: '단일 Gaussian',
+      morphology_description: '하나의 Gaussian으로 구성된 source',
+    }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      catalog: 'lofar_dr3',
+      catalog_release: 'LoTSS DR3 v1.0',
+      coordinate_frame: 'icrs',
+      reference_frequency_mhz: 144,
+      tap_mode: 'async',
+      search_mode: 'brightness',
+      enrichment_status: 'partial',
+      enrichment_warning: 'SIMBAD 유형 설명 일부를 불러오지 못했습니다.',
+      morphology_codebook: [{ code: 'S', label: '단일 Gaussian', description: '하나의 Gaussian' }],
+      sort_by: 'total_flux',
+      sort_direction: 'desc',
+      limit: 100,
+      source_prefix: null,
+      center_ra_deg: null,
+      center_dec_deg: null,
+      radius_arcmin: null,
+      result_count: 1,
+      sources: [source],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    renderPanel()
+
+    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
+
+    expect(await screen.findByText(source.source_id, { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText('SIMBAD 대응 확인 안 됨')).toBeInTheDocument()
+    expect(screen.queryByText('SIMBAD 5″ 내 대응 없음')).not.toBeInTheDocument()
+    expect(screen.getByText('SIMBAD 이름·유형 보강 일부 완료')).toBeInTheDocument()
   })
 })

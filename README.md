@@ -9,7 +9,8 @@
 - Narrabri, Pyeongchang, Fushan 중 1–3개 관측지 선택 및 좌표 편집
 - 중심 UTC, 전후 시간창, 샘플 간격, 최소 고도 설정
 - 3C 123, 3C 273, 3C 433, 3C 295, 3C 134 선택
-- 별도 LOFAR DR3 카탈로그 탭에서 LoTSS DR3 전파원 검색, 144 MHz 밝기 정렬 및 계산 대상으로 가져오기
+- 별도 LOFAR DR3 카탈로그 탭에서 144 MHz 밝기 순 목록 또는 ICRS 좌표 주변 cone search를 선택하고 계산 대상으로 가져오기
+- LoTSS 형태 코드와, 이용 가능한 경우 SIMBAD의 친숙한 이름·물리 유형·위치 대응 거리 표시
 - 관측지별 시간–고도 곡선과 지평선·최소 고도선 표시
 - 모든 선택 관측지에서 동시에 임계 고도 이상인 샘플과 연속 샘플 묶음 강조
 - target별 시간창 내 최장 공통 가시 구간을 샘플 기준으로 표시
@@ -58,11 +59,23 @@ LoTSS DR3에서 가져온 total/peak flux는 카탈로그 검색 결과의 정�
 ## LOFAR DR3 카탈로그 연계
 
 카탈로그 탭은 ASTRON의 공개 asynchronous TAP 서비스에 있는 `lotss_dr3.main_sources`를 서버에서
-제한된 ADQL 템플릿으로 조회합니다. prefix를 비워 두면 전역 카탈로그에서 밝기 순 목록을 가져오고,
-필요하면 LoTSS Source ID 앞부분으로 범위를 좁힐 수 있습니다. integrated flux 또는 peak flux,
-정렬 방향, 표시할 결과 수를 선택할 수 있습니다. 선택한 source의 ICRS 좌표 snapshot을 계산 요청에
-포함하므로 고도 계산 중에는 외부 카탈로그를 다시 조회하지 않습니다. 공개 조회에는 계정이나 API
-키가 필요하지 않습니다.
+제한된 ADQL 템플릿으로 조회합니다. **밝기 순 목록**에서는 전역 목록 또는 선택적인 Source ID prefix를
+조회하고 integrated/peak flux, 정렬 방향, 결과 수를 지정합니다. **Source cone search**에서는 ICRS
+RA·Dec와 최대 60 arcmin 반경을 입력하고 중심 거리 또는 flux 순으로 결과를 정렬합니다. 두 모드에서
+선택한 source의 ICRS 좌표 snapshot을 계산 요청에 포함하므로 고도 계산 중에는 외부 카탈로그를 다시
+조회하지 않습니다. 공개 조회에는 계정이나 API 키가 필요하지 않습니다.
+
+`ILTJ...`는 대부분 RA/Dec에서 자동 생성된 LoTSS의 전파 source 식별자이며, 일반 천체명이 아닙니다.
+`S_Code`도 물리적 천체 유형이 아니라 PyBDSF 전파 형태 코드입니다. `S`는 단일 Gaussian, `M`은 복수
+Gaussian, `C`는 다른 source와 같은 island 안의 단일 Gaussian source를 뜻합니다. 인터페이스는 이
+형태 코드표를 SIMBAD 물리 유형과 분리해 제공합니다.
+
+각 LoTSS 위치는 CDS XMatch를 통해 5 arcsec 안의 가장 가까운 SIMBAD 위치 후보와 대응합니다. 후보가
+있으면 3C·NGC·IC 등의 별칭, SIMBAD 유형 코드와 설명, 각거리를 표시하고 친숙한 별칭을 우선 표시명으로
+사용합니다. 2 arcsec 이하는 `high`, 2 arcsec 초과 5 arcsec 이하는 `caution`으로 구분하지만, 어느
+경우에도 좌표 기반 후보일 뿐 동일 천체의 확정 식별은 아닙니다. 대응이 없으면 원래 `ILTJ...` ID를
+유지합니다. XMatch 또는 SIMBAD 보강이 실패해도 ASTRON LoTSS 결과는 유지하며, 사용 불가 또는 일부
+완료 상태를 함께 알립니다.
 
 서버는 같은 검색 요청을 하나의 TAP job으로 합치고 성공 결과를 잠시 캐시합니다. 서로 다른
 upstream 검색의 동시 실행 수도 제한하며, 용량을 초과한 새 검색에는 잠시 후 재시도하도록
@@ -70,7 +83,11 @@ upstream 검색의 동시 실행 수도 제한하며, 용량을 초과한 새 �
 
 - [LoTSS DR3 공개 릴리스](https://lofar-surveys.org/dr3.html)
 - [ASTRON LoTSS DR3 source table](https://vo.astron.nl/tableinfo/lotss_dr3.main_sources)
+- [ASTRON LoTSS DR3 cone search](https://vo.astron.nl/lotss_dr3/q/src_cone/info)
 - [ASTRON asynchronous TAP service](https://vo.astron.nl/__system__/tap/run/tap/async)
+- [CDS XMatch API](https://cdsxmatch.u-strasbg.fr/xmatch/doc/cross-match-API.html)
+- [SIMBAD](https://simbad.cds.unistra.fr/simbad/)
+- [SIMBAD object type codebook](https://simbad.cds.unistra.fr/Pages/guide/otypes_desc.htx)
 
 ## 구조
 

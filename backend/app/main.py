@@ -19,6 +19,8 @@ from app.lotss_dr3 import (
 )
 from app.models import (
     HealthResponse,
+    LofarConeSearchParameters,
+    LofarConeSearchResponse,
     LofarSearchParameters,
     LofarSearchResponse,
     TargetCatalogItem,
@@ -93,6 +95,52 @@ async def search_lotss_dr3_sources(
                 limit=params.limit,
             )
         )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except LofarCatalogBusy as error:
+        raise HTTPException(
+            status_code=429,
+            detail="LOFAR DR3 검색 요청이 많습니다. 잠시 후 다시 시도해 주세요.",
+            headers={"Retry-After": "5"},
+        ) from error
+    except LofarCatalogTimeout as error:
+        raise HTTPException(
+            status_code=504,
+            detail="LOFAR DR3 카탈로그가 제한 시간 안에 응답하지 않았습니다.",
+        ) from error
+    except LofarCatalogError as error:
+        raise HTTPException(
+            status_code=502,
+            detail="LOFAR DR3 카탈로그를 일시적으로 이용할 수 없거나 응답 형식이 올바르지 않습니다.",
+        ) from error
+
+
+@app.get(
+    "/api/v1/catalogs/lotss-dr3/cone",
+    response_model=LofarConeSearchResponse,
+    tags=["catalog"],
+)
+async def cone_search_lotss_dr3_sources(
+    params: Annotated[LofarConeSearchParameters, Query()],
+) -> LofarConeSearchResponse:
+    """Find LoTSS DR3 sources inside a validated ICRS cone through async TAP."""
+
+    try:
+        response = await catalog_query_coordinator.search(
+            LofarSearch(
+                source_prefix=None,
+                sort_by=params.sort_by,
+                sort_direction=params.sort_direction,
+                limit=params.limit,
+                mode="cone",
+                ra_deg=params.ra_deg,
+                dec_deg=params.dec_deg,
+                radius_arcmin=params.radius_arcmin,
+            )
+        )
+        if not isinstance(response, LofarConeSearchResponse):
+            raise LofarCatalogError("catalog coordinator returned the wrong response type")
+        return response
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except LofarCatalogBusy as error:

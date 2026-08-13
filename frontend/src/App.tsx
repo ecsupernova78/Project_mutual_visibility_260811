@@ -473,11 +473,24 @@ function Results({
               <p className="alias-list">{target.aliases.join(' · ')}</p>
             )}
             {target.catalog === 'lofar_dr3' && (
-              <p className="catalog-source-meta">
-                총 플럭스 {formatRadioFlux(target.total_flux_mjy, 'mJy')}
-                <span aria-hidden="true"> · </span>
-                피크 플럭스 {formatRadioFlux(target.peak_flux_mjy, 'mJy/beam')}
-              </p>
+              <div className="catalog-source-details">
+                <p className="catalog-source-meta">
+                  LoTSS ID {target.catalog_source_id}
+                  <span aria-hidden="true"> · </span>
+                  총 플럭스 {formatRadioFlux(target.total_flux_mjy, 'mJy')}
+                  <span aria-hidden="true"> · </span>
+                  피크 플럭스 {formatRadioFlux(target.peak_flux_mjy, 'mJy/beam')}
+                </p>
+                <p className="catalog-source-meta">
+                  LoTSS 전파 형태 {target.morphology_code
+                    ? `${target.morphology_code} — ${target.morphology_label ?? '설명 없음'}`
+                    : '미분류'}
+                  <span aria-hidden="true"> · </span>
+                  SIMBAD 물리 유형 {target.object_type_label
+                    ? `${target.object_type_label}${target.object_type_code ? ` (${target.object_type_code})` : ''}`
+                    : '없음 또는 미확인'}
+                </p>
+              </div>
             )}
           </div>
           <dl className="object-coordinates">
@@ -703,16 +716,31 @@ export default function App() {
       if (next.has(source.id)) {
         next.delete(source.id)
       } else {
+        const aliases = [...new Set([
+          ...(source.aliases ?? []),
+          ...(source.source_id === source.name ? [] : [source.source_id]),
+        ])].slice(0, 5)
         next.set(source.id, {
           id: source.id,
           name: source.name,
-          aliases: source.source_id === source.name ? [] : [source.source_id],
+          aliases,
           ra_deg: source.ra_deg,
           dec_deg: source.dec_deg,
           catalog: source.catalog,
           catalog_source_id: source.source_id,
           ...(source.total_flux_mjy === null ? {} : { total_flux_mjy: source.total_flux_mjy }),
           ...(source.peak_flux_mjy === null ? {} : { peak_flux_mjy: source.peak_flux_mjy }),
+          ...(source.morphology_code == null ? {} : { morphology_code: source.morphology_code }),
+          ...(source.morphology_label == null ? {} : { morphology_label: source.morphology_label }),
+          ...(source.morphology_description == null ? {} : { morphology_description: source.morphology_description }),
+          ...(source.counterpart_name == null ? {} : { counterpart_name: source.counterpart_name }),
+          ...((source.counterpart_aliases?.length ?? 0) === 0 ? {} : { counterpart_aliases: source.counterpart_aliases }),
+          ...(source.object_type_code == null ? {} : { object_type_code: source.object_type_code }),
+          ...(source.object_type_label == null ? {} : { object_type_label: source.object_type_label }),
+          ...(source.object_type_description == null ? {} : { object_type_description: source.object_type_description }),
+          ...(source.crossmatch_separation_arcsec == null ? {} : { crossmatch_separation_arcsec: source.crossmatch_separation_arcsec }),
+          ...(source.crossmatch_confidence == null ? {} : { crossmatch_confidence: source.crossmatch_confidence }),
+          ...(source.crossmatch_catalog == null ? {} : { crossmatch_catalog: source.crossmatch_catalog }),
         })
       }
       if (next.size + selectedTargetIds.size > 0) setSelectionError(false)
@@ -999,6 +1027,14 @@ export default function App() {
                       <span>
                         <b>{target.name}</b>
                         <small>{target.catalog_source_id} · {target.ra_deg.toFixed(4)}°, {target.dec_deg.toFixed(4)}°</small>
+                        <small>
+                          LoTSS 형태 {target.morphology_code
+                            ? `${target.morphology_code} — ${target.morphology_label ?? '설명 없음'}`
+                            : '미분류'}
+                          {' · '}SIMBAD 유형 {target.object_type_label
+                            ? `${target.object_type_label}${target.object_type_code ? ` (${target.object_type_code})` : ''}`
+                            : '없음 또는 미확인'}
+                        </small>
                       </span>
                       <button
                         type="button"

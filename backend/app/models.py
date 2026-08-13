@@ -19,6 +19,9 @@ Identifier = Annotated[
     StringConstraints(strip_whitespace=True, min_length=1, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$"),
 ]
 DisplayName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+CatalogTypeCode = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+CatalogTypeLabel = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+CatalogDescription = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 TargetIdentifier = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$"),
@@ -81,6 +84,17 @@ class CustomTarget(ApiModel):
     catalog_source_id: CatalogSourceId
     total_flux_mjy: float | None = Field(default=None, ge=0.0)
     peak_flux_mjy: float | None = Field(default=None, ge=0.0)
+    morphology_code: Literal["S", "M", "C"] | None = None
+    morphology_label: DisplayName | None = None
+    morphology_description: CatalogDescription | None = None
+    counterpart_name: DisplayName | None = None
+    counterpart_aliases: list[DisplayName] = Field(default_factory=list, max_length=5)
+    object_type_code: CatalogTypeCode | None = None
+    object_type_label: CatalogTypeLabel | None = None
+    object_type_description: CatalogDescription | None = None
+    crossmatch_separation_arcsec: float | None = Field(default=None, ge=0.0, le=5.0)
+    crossmatch_confidence: Literal["high", "caution"] | None = None
+    crossmatch_catalog: Literal["SIMBAD"] | None = None
 
     @field_validator("id")
     @classmethod
@@ -88,6 +102,33 @@ class CustomTarget(ApiModel):
         if not value.startswith("lotss-dr3-"):
             raise ValueError("LOFAR DR3 target ids must start with 'lotss-dr3-'")
         return value
+
+    @model_validator(mode="after")
+    def validate_crossmatch_metadata(self) -> Self:
+        metadata_present = any(
+            value is not None
+            for value in (
+                self.counterpart_name,
+                self.object_type_code,
+                self.object_type_label,
+                self.object_type_description,
+                self.crossmatch_separation_arcsec,
+                self.crossmatch_confidence,
+            )
+        ) or bool(self.counterpart_aliases)
+        if self.crossmatch_catalog is None and metadata_present:
+            raise ValueError("counterpart metadata requires crossmatch_catalog")
+        if self.crossmatch_catalog == "SIMBAD":
+            if (
+                self.counterpart_name is None
+                or self.crossmatch_separation_arcsec is None
+                or self.crossmatch_confidence is None
+            ):
+                raise ValueError("SIMBAD metadata requires counterpart name, separation, and confidence")
+            expected = "high" if self.crossmatch_separation_arcsec <= 2.0 else "caution"
+            if self.crossmatch_confidence != expected:
+                raise ValueError("crossmatch confidence does not match its separation")
+        return self
 
 
 class VisibilityRequest(ApiModel):
@@ -197,6 +238,23 @@ class TargetVisibility(ApiModel):
     catalog_source_id: str | None = None
     total_flux_mjy: float | None = None
     peak_flux_mjy: float | None = None
+    morphology_code: Literal["S", "M", "C"] | None = None
+    morphology_label: str | None = None
+    morphology_description: str | None = None
+    counterpart_name: str | None = None
+    counterpart_aliases: list[str] = Field(default_factory=list)
+    object_type_code: str | None = None
+    object_type_label: str | None = None
+    object_type_description: str | None = None
+    crossmatch_separation_arcsec: float | None = None
+    crossmatch_confidence: Literal["high", "caution"] | None = None
+    crossmatch_catalog: Literal["SIMBAD"] | None = None
+
+
+class LofarMorphologyDefinition(ApiModel):
+    code: Literal["S", "M", "C"]
+    label: str
+    description: str
 
 
 class LofarSource(ApiModel):
@@ -204,12 +262,25 @@ class LofarSource(ApiModel):
     catalog: Literal["lofar_dr3"] = "lofar_dr3"
     source_id: str
     name: str
+    aliases: list[str] = Field(default_factory=list)
     ra_deg: float
     dec_deg: float
     ra_hms: str
     dec_dms: str
     total_flux_mjy: float | None
     peak_flux_mjy: float | None
+    morphology_code: Literal["S", "M", "C"] | None = None
+    morphology_label: str | None = None
+    morphology_description: str | None = None
+    separation_arcmin: float | None = None
+    counterpart_name: str | None = None
+    counterpart_aliases: list[str] = Field(default_factory=list)
+    object_type_code: str | None = None
+    object_type_label: str | None = None
+    object_type_description: str | None = None
+    crossmatch_separation_arcsec: float | None = None
+    crossmatch_confidence: Literal["high", "caution"] | None = None
+    crossmatch_catalog: Literal["SIMBAD"] | None = None
 
 
 class LofarSearchParameters(ApiModel):
@@ -241,12 +312,56 @@ class LofarSearchResponse(ApiModel):
     coordinate_frame: str = "icrs"
     reference_frequency_mhz: float = 144.0
     tap_mode: Literal["async"] = "async"
+    search_mode: Literal["brightness"] = "brightness"
+    center_ra_deg: None = None
+    center_dec_deg: None = None
+    radius_arcmin: None = None
     sort_by: Literal["total_flux", "peak_flux"]
     sort_direction: Literal["asc", "desc"]
     limit: int
     source_prefix: str | None
     result_count: int
     sources: list[LofarSource]
+    enrichment_status: Literal["complete", "partial", "unavailable"] = "complete"
+    enrichment_warning: str | None = None
+    morphology_codebook: list[LofarMorphologyDefinition] = Field(default_factory=list)
+
+
+class LofarConeSearchParameters(ApiModel):
+    ra_deg: float = Field(ge=0.0, lt=360.0)
+    dec_deg: float = Field(ge=-90.0, le=90.0)
+    radius_arcmin: float = Field(gt=0.0, le=60.0)
+    sort_by: Literal["distance", "total_flux", "peak_flux"] = "distance"
+    sort_direction: Literal["asc", "desc"] = "asc"
+    limit: Literal[10, 25, 50, 100, 250, 500, 1000] = 100
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def parse_query_string_limit(cls, value: object) -> object:
+        if isinstance(value, str) and value.isdecimal():
+            return int(value)
+        return value
+
+
+class LofarConeSearchResponse(ApiModel):
+    catalog: Literal["lofar_dr3"] = "lofar_dr3"
+    catalog_release: str = "LoTSS DR3 v1.0"
+    coordinate_frame: str = "icrs"
+    reference_frequency_mhz: float = 144.0
+    tap_mode: Literal["async"] = "async"
+    search_mode: Literal["cone"] = "cone"
+    center_ra_deg: float
+    center_dec_deg: float
+    radius_arcmin: float
+    sort_by: Literal["distance", "total_flux", "peak_flux"]
+    sort_direction: Literal["asc", "desc"]
+    limit: int
+    source_prefix: None = None
+    result_count: int
+    sources: list[LofarSource]
+    enrichment_status: Literal["complete", "partial", "unavailable"] = "complete"
+    enrichment_warning: str | None = None
+    morphology_codebook: list[LofarMorphologyDefinition] = Field(default_factory=list)
 
 
 class CalculationMetadata(ApiModel):

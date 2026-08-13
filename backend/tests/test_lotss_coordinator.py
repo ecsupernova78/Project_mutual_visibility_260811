@@ -159,6 +159,32 @@ def test_failed_query_is_not_cached_and_can_be_retried() -> None:
     asyncio.run(scenario())
 
 
+def test_degraded_enrichment_response_is_not_cached() -> None:
+    async def scenario() -> None:
+        call_count = 0
+
+        async def runner(search: LofarSearch) -> LofarSearchResponse:
+            nonlocal call_count
+            call_count += 1
+            return LofarSearchResponse(
+                sort_by=search.sort_by,
+                sort_direction=search.sort_direction,
+                limit=search.limit,
+                source_prefix=search.source_prefix,
+                result_count=0,
+                sources=[],
+                enrichment_status="unavailable",
+                enrichment_warning="temporary failure",
+            )
+
+        coordinator = CatalogQueryCoordinator(runner)
+        await coordinator.search(_search())
+        await coordinator.search(_search())
+        assert call_count == 2
+
+    asyncio.run(scenario())
+
+
 def test_cancelling_one_waiter_does_not_cancel_shared_query() -> None:
     async def scenario() -> None:
         call_count = 0

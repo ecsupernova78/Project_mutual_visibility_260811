@@ -15,20 +15,23 @@ from app.lotss_dr3 import (
     LofarCatalogError,
     LofarCatalogTimeout,
     LofarSearch,
+    _apply_counterparts,
     _build_adql,
     _configured_job_timeout,
     _configured_request_timeout,
+    _Counterpart,
+    _enrich_sources,
     _request,
     _validated_job_url,
     search_sources,
 )
-from app.models import LofarSearchResponse
+from app.models import LofarConeSearchResponse, LofarSearchResponse, LofarSource
 
 JOB_URL = f"{TAP_ASYNC_URL}/job-123"
 CSV_BODY = (
-    "Source_Name,RA,DEC,Total_flux,Peak_flux\n"
-    "ILTJ123400.00+450000.0,188.5,45.0,210.5,180.2\n"
-    "ILTJ123401.00+450100.0,188.5041667,45.0166667,101.25,90.0\n"
+    "Source_Name,RA,DEC,Total_flux,Peak_flux,S_Code\n"
+    "ILTJ123400.00+450000.0,188.5,45.0,210.5,180.2,S\n"
+    "ILTJ123401.00+450100.0,188.5041667,45.0166667,101.25,90.0,M\n"
 )
 
 
@@ -65,7 +68,7 @@ def test_invalid_timeout_configuration_falls_back(monkeypatch: pytest.MonkeyPatc
 def test_global_and_prefix_adql_are_bounded_and_whitelisted() -> None:
     global_adql = _build_adql(_search())
     assert global_adql == (
-        "SELECT TOP 100 Source_Name, RA, DEC, Total_flux, Peak_flux "
+        "SELECT TOP 100 Source_Name, RA, DEC, Total_flux, Peak_flux, S_Code "
         "FROM lotss_dr3.main_sources WHERE Total_flux IS NOT NULL "
         "ORDER BY Total_flux DESC, Source_Name ASC"
     )
@@ -75,6 +78,21 @@ def test_global_and_prefix_adql_are_bounded_and_whitelisted() -> None:
     assert "Peak_flux IS NOT NULL" in prefix_adql
     assert "1=ivo_nocasematch(Source_Name, 'ILTJ1234%')" in prefix_adql
     assert prefix_adql.endswith("ORDER BY Peak_flux ASC, Source_Name ASC")
+
+    cone_adql = _build_adql(
+        _search(
+            mode="cone",
+            source_prefix=None,
+            sort_by="distance",
+            sort_direction="asc",
+            ra_deg=49.950667,
+            dec_deg=41.511696,
+            radius_arcmin=3,
+        )
+    )
+    assert "S_Code, DISTANCE(POINT('ICRS', RA, DEC), POINT('ICRS', 49.950667, 41.511696))" in cone_adql
+    assert "CIRCLE('ICRS', 49.950667, 41.511696, 0.05)" in cone_adql
+    assert cone_adql.endswith("ORDER BY Separation_deg ASC, Source_Name ASC")
 
 
 @pytest.mark.parametrize(
@@ -149,6 +167,7 @@ def test_async_uws_lifecycle_builds_query_polls_parses_and_deletes(
     assert result.sources[0].dec_dms == "+45:00:00.00"
     assert result.sources[0].total_flux_mjy == 210.5
     assert result.sources[0].peak_flux_mjy == 180.2
+    assert result.sources[0].morphology_code == "S"
 
 
 @pytest.mark.parametrize(
@@ -395,6 +414,167 @@ def test_malformed_or_oversized_catalog_result_is_rejected() -> None:
             _run_search(_search(limit=10), httpx.MockTransport(handler))
 
 
+def test_simbad_enrichment_prefers_catalog_alias_and_preserves_counterpart_provenance() -> None:
+    source = LofarSource(
+        id="lotss-dr3-deadbeef12",
+        source_id="ILTJ043704.43+294013.1",
+        name="ILTJ043704.43+294013.1",
+        ra_deg=69.268458,
+        dec_deg=29.670306,
+        ra_hms="04:37:04.43",
+        dec_dms="+29:40:13.10",
+        total_flux_mjy=271121.18,
+        peak_flux_mjy=100000,
+        morphology_code="M",
+    )
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if "cdsxmatch" in request.url.host:
+            return httpx.Response(
+                200,
+                text=(
+                    "angDist,source_id,main_id,otype,main_type\n"
+                    "0.935486,ILTJ043704.43+294013.1,NAME Per B,SyG,Seyfert\n"
+                ),
+            )
+        form = parse_qs(request.content.decode(), keep_blank_values=True)
+        query = form["QUERY"][0]
+        if "FROM basic" in query:
+            return httpx.Response(
+                200,
+                text="main_id,alias_id\nNAME Per B,4C 29.14\nNAME Per B,3C 123\n",
+            )
+        assert "FROM otypedef" in query
+        return httpx.Response(200, text="otype,description\nSyG,Seyfert galaxy\n")
+
+    async def execute() -> tuple[list[LofarSource], str, str | None]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await _enrich_sources([source], client)
+
+    sources, status, warning = asyncio.run(execute())
+    enriched = sources[0]
+    assert call_count == 3
+    assert status == "complete"
+    assert warning is None
+    assert enriched.name == "3C123"
+    assert enriched.counterpart_name == "NAME Per B"
+    assert enriched.aliases[0] == source.source_id
+    assert enriched.counterpart_aliases[:2] == ["3C123", "4C29.14"]
+    assert enriched.object_type_code == "SyG"
+    assert enriched.object_type_label == "Seyfert"
+    assert enriched.object_type_description == "Seyfert galaxy"
+    assert enriched.crossmatch_separation_arcsec == 0.935486
+    assert enriched.crossmatch_confidence == "high"
+
+
+def test_simbad_enrichment_prefers_3c_radio_name_over_ngc_alias() -> None:
+    source = LofarSource(
+        id="lotss-dr3-3c84",
+        source_id="ILTJ031948.09+413042.8",
+        name="ILTJ031948.09+413042.8",
+        ra_deg=49.950375,
+        dec_deg=41.511889,
+        ra_hms="03:19:48.09",
+        dec_dms="+41:30:42.80",
+        total_flux_mjy=1000.0,
+        peak_flux_mjy=500.0,
+    )
+    match = _Counterpart(
+        main_id="NGC 1275",
+        object_type_code="Bla",
+        object_type_label="Blazar",
+        separation_arcsec=0.5,
+    )
+
+    [enriched] = _apply_counterparts(
+        [source],
+        {source.source_id: match},
+        {match.main_id: ["NGC 1275", "3C 84"]},
+        {},
+    )
+
+    assert enriched.name == "3C84"
+    assert "NGC1275" in enriched.aliases
+    assert enriched.counterpart_name == "NGC1275"
+    assert enriched.crossmatch_catalog == "SIMBAD"
+
+
+def test_simbad_failure_is_fail_soft() -> None:
+    source = LofarSource(
+        id="lotss-dr3-deadbeef12",
+        source_id="ILTJ000000.00+000000.0",
+        name="ILTJ000000.00+000000.0",
+        ra_deg=0,
+        dec_deg=0,
+        ra_hms="00:00:00.00",
+        dec_dms="+00:00:00.00",
+        total_flux_mjy=1,
+        peak_flux_mjy=1,
+    )
+
+    async def execute() -> tuple[list[LofarSource], str, str | None]:
+        transport = httpx.MockTransport(lambda request: httpx.Response(503))
+        async with httpx.AsyncClient(transport=transport) as client:
+            return await _enrich_sources([source], client)
+
+    sources, status, warning = asyncio.run(execute())
+    assert sources == [source]
+    assert status == "unavailable"
+    assert warning is not None
+
+
+@pytest.mark.parametrize("malformed_stage", ["aliases", "types"])
+def test_simbad_tap_malformed_http_200_is_partial_enrichment(malformed_stage: str) -> None:
+    source = LofarSource(
+        id="lotss-dr3-deadbeef12",
+        source_id="ILTJ043704.43+294013.1",
+        name="ILTJ043704.43+294013.1",
+        ra_deg=69.268458,
+        dec_deg=29.670306,
+        ra_hms="04:37:04.43",
+        dec_dms="+29:40:13.10",
+        total_flux_mjy=271121.18,
+        peak_flux_mjy=100000,
+        morphology_code="M",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "cdsxmatch" in request.url.host:
+            return httpx.Response(
+                200,
+                text=(
+                    "angDist,source_id,main_id,otype,main_type\n"
+                    "0.935486,ILTJ043704.43+294013.1,NAME Per B,SyG,Seyfert\n"
+                ),
+            )
+        form = parse_qs(request.content.decode(), keep_blank_values=True)
+        query = form["QUERY"][0]
+        if "FROM basic" in query:
+            if malformed_stage == "aliases":
+                return httpx.Response(200, text="unexpected,error\n1,broken\n")
+            return httpx.Response(200, text="\ufeffmain_id,alias_id\nNAME Per B,3C 123\n")
+        assert "FROM otypedef" in query
+        if malformed_stage == "types":
+            return httpx.Response(200, text="unexpected,error\n1,broken\n")
+        return httpx.Response(200, text="otype,description\nSyG,Seyfert galaxy\n")
+
+    async def execute() -> tuple[list[LofarSource], str, str | None]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await _enrich_sources([source], client)
+
+    sources, status, warning = asyncio.run(execute())
+    enriched = sources[0]
+    assert status == "partial"
+    assert warning is not None
+    assert enriched.counterpart_name == "NAME Per B"
+    assert enriched.object_type_code == "SyG"
+    assert enriched.object_type_label == "Seyfert"
+    assert enriched.object_type_description is None
+
+
 def test_catalog_endpoint_defaults_to_global_async_browse(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[LofarSearch] = []
 
@@ -420,12 +600,19 @@ def test_catalog_endpoint_defaults_to_global_async_browse(client: TestClient, mo
         "coordinate_frame": "icrs",
         "reference_frequency_mhz": 144.0,
         "tap_mode": "async",
+        "search_mode": "brightness",
+        "center_ra_deg": None,
+        "center_dec_deg": None,
+        "radius_arcmin": None,
         "sort_by": "total_flux",
         "sort_direction": "desc",
         "limit": 100,
         "source_prefix": None,
         "result_count": 0,
         "sources": [],
+        "enrichment_status": "complete",
+        "enrichment_warning": None,
+        "morphology_codebook": [],
     }
 
 
@@ -453,6 +640,59 @@ def test_catalog_endpoint_coerces_allowed_limit_query_strings(
         assert response.json()["limit"] == limit
 
     assert [search.limit for search in captured] == [10, 25, 50, 100, 250, 500, 1000]
+
+
+def test_cone_endpoint_builds_a_separate_validated_search(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[LofarSearch] = []
+
+    async def fake_search(search: LofarSearch) -> LofarConeSearchResponse:
+        captured.append(search)
+        return LofarConeSearchResponse(
+            center_ra_deg=search.ra_deg,
+            center_dec_deg=search.dec_deg,
+            radius_arcmin=search.radius_arcmin,
+            sort_by=search.sort_by,
+            sort_direction=search.sort_direction,
+            limit=search.limit,
+            result_count=0,
+            sources=[],
+        )
+
+    monkeypatch.setattr("app.main.catalog_query_coordinator.search", fake_search)
+    response = client.get(
+        "/api/v1/catalogs/lotss-dr3/cone",
+        params={"ra_deg": 49.950667, "dec_deg": 41.511696, "radius_arcmin": 3},
+    )
+
+    assert response.status_code == 200
+    assert captured == [
+        LofarSearch(
+            source_prefix=None,
+            sort_by="distance",
+            sort_direction="asc",
+            limit=100,
+            mode="cone",
+            ra_deg=49.950667,
+            dec_deg=41.511696,
+            radius_arcmin=3,
+        )
+    ]
+    assert response.json()["search_mode"] == "cone"
+    assert response.json()["source_prefix"] is None
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"ra_deg": 360, "dec_deg": 0, "radius_arcmin": 1},
+        {"ra_deg": 0, "dec_deg": 91, "radius_arcmin": 1},
+        {"ra_deg": 0, "dec_deg": 0, "radius_arcmin": 0},
+        {"ra_deg": 0, "dec_deg": 0, "radius_arcmin": 61},
+        {"ra_deg": 0, "dec_deg": 0, "radius_arcmin": 1, "sort_by": "source_name"},
+    ],
+)
+def test_cone_endpoint_rejects_out_of_range_or_untrusted_params(client: TestClient, params: dict[str, object]) -> None:
+    assert client.get("/api/v1/catalogs/lotss-dr3/cone", params=params).status_code == 422
 
 
 @pytest.mark.parametrize(

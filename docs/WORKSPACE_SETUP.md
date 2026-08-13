@@ -61,7 +61,10 @@ uv sync --project backend --group research  # 과거 PNG/MP4 재현용
 운영 중인 LoTSS DR3 검색은 기본 API 의존성으로 설치되며 별도 그룹이 필요하지 않습니다. 외부
 HTTP 요청 한 번의 제한시간과 asynchronous TAP job 전체 제한시간은 `.env.example`의
 `CATALOG_REQUEST_TIMEOUT_SECONDS`, `CATALOG_JOB_TIMEOUT_SECONDS`를 기준으로 배포 환경에서
-조정합니다. `CATALOG_CACHE_TTL_SECONDS`는 process-local 성공 응답 cache의 초 단위 TTL,
+조정합니다. `CATALOG_ENRICHMENT_TIMEOUT_SECONDS`는 LoTSS 결과를 CDS XMatch와 SIMBAD로 보강하는
+각 단계의 전체 제한시간이며 기본값은 30초, 허용 범위는 5~60초입니다. XMatch나 SIMBAD가 이 시간
+안에 완료되지 않아도 원본 LoTSS 검색 결과를 유지하는 fail-soft 동작을 사용합니다.
+`CATALOG_CACHE_TTL_SECONDS`는 process-local 성공 응답 cache의 초 단위 TTL,
 `CATALOG_MAX_CONCURRENT_JOBS`는 process마다 동시에 실행할 서로 다른 TAP job의 수(1~4)를
 제어합니다. 조회 행 수는 API가 허용하는 선택값 중 최대 1,000개로 고정 제한됩니다.
 
@@ -75,7 +78,8 @@ uv sync --project backend --locked --no-dev
 
 `.env.example`은 지원 설정의 값과 이름을 보여 주는 템플릿입니다. 현재 개발 명령은 루트 `.env`를
 자동으로 읽지 않으므로 로컬 override는 PowerShell process 환경 변수로 지정합니다. 예를 들어
-`$env:CATALOG_JOB_TIMEOUT_SECONDS='120'` 또는 `$env:CORS_ORIGINS='https://web.example'`를 설정한
+`$env:CATALOG_JOB_TIMEOUT_SECONDS='120'`, `$env:CATALOG_ENRICHMENT_TIMEOUT_SECONDS='40'` 또는
+`$env:CORS_ORIGINS='https://web.example'`를 설정한
 터미널에서 API를 시작합니다. 프런트 API 주소는 `frontend/.env.local`의
 `VITE_API_BASE_URL`로 지정할 수 있습니다. `.env`, `.env.local`, 토큰, 인증서, 개인키는 Git에
 추가하지 않습니다. 기본 CORS 허용 주소는 로컬 Vite 서버입니다.
@@ -87,6 +91,11 @@ uv sync --project backend --locked --no-dev
 - `.env` 및 인증서·개인키 파일
 
 `references_2026`와 루트 `image.png`는 기존 연구 자료이므로 자동 포맷·이동·삭제하지 않습니다.
+
+카탈로그 연계에 사용하는 공개 서비스 문서는 [ASTRON TAP](https://vo.astron.nl/__system__/tap/run/info),
+[LoTSS DR3 source table](https://vo.astron.nl/tableinfo/lotss_dr3.main_sources),
+[CDS XMatch API](https://cdsxmatch.u-strasbg.fr/xmatch/doc/cross-match-API.html),
+[SIMBAD TAP·object types](https://simbad.cds.unistra.fr/Pages/guide/sim-url.htx)를 기준으로 합니다.
 
 ## 7. Git과 배포
 

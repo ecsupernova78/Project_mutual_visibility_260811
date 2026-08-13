@@ -38,6 +38,17 @@ class _CalculationTarget:
     catalog_source_id: str | None = None
     total_flux_mjy: float | None = None
     peak_flux_mjy: float | None = None
+    morphology_code: str | None = None
+    morphology_label: str | None = None
+    morphology_description: str | None = None
+    counterpart_name: str | None = None
+    counterpart_aliases: tuple[str, ...] = ()
+    object_type_code: str | None = None
+    object_type_label: str | None = None
+    object_type_description: str | None = None
+    crossmatch_separation_arcsec: float | None = None
+    crossmatch_confidence: str | None = None
+    crossmatch_catalog: str | None = None
 
 
 def _calculation_targets(request: VisibilityRequest) -> list[_CalculationTarget]:
@@ -61,6 +72,17 @@ def _calculation_targets(request: VisibilityRequest) -> list[_CalculationTarget]
             catalog_source_id=target.catalog_source_id,
             total_flux_mjy=target.total_flux_mjy,
             peak_flux_mjy=target.peak_flux_mjy,
+            morphology_code=target.morphology_code,
+            morphology_label=target.morphology_label,
+            morphology_description=target.morphology_description,
+            counterpart_name=target.counterpart_name,
+            counterpart_aliases=tuple(target.counterpart_aliases),
+            object_type_code=target.object_type_code,
+            object_type_label=target.object_type_label,
+            object_type_description=target.object_type_description,
+            crossmatch_separation_arcsec=target.crossmatch_separation_arcsec,
+            crossmatch_confidence=target.crossmatch_confidence,
+            crossmatch_catalog=target.crossmatch_catalog,
         )
         for target in request.custom_targets
     )
@@ -161,6 +183,17 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                 catalog_source_id=target.catalog_source_id,
                 total_flux_mjy=target.total_flux_mjy,
                 peak_flux_mjy=target.peak_flux_mjy,
+                morphology_code=target.morphology_code,
+                morphology_label=target.morphology_label,
+                morphology_description=target.morphology_description,
+                counterpart_name=target.counterpart_name,
+                counterpart_aliases=list(target.counterpart_aliases),
+                object_type_code=target.object_type_code,
+                object_type_label=target.object_type_label,
+                object_type_description=target.object_type_description,
+                crossmatch_separation_arcsec=target.crossmatch_separation_arcsec,
+                crossmatch_confidence=target.crossmatch_confidence,
+                crossmatch_catalog=target.crossmatch_catalog,
             )
         )
 
