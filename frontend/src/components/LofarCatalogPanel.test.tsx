@@ -207,6 +207,39 @@ describe('LofarCatalogPanel', () => {
     expect(await screen.findByRole('checkbox', { name: `${source.name} 계산 대상에서 제거` })).toBeChecked()
   })
 
+  it('최대 개수에 도달해도 선택한 LOFAR 천체는 해제할 수 있고 미선택 천체만 추가를 막는다', async () => {
+    const user = userEvent.setup()
+    const selectedSource = makeSource(0)
+    const unselectedSource = makeSource(1)
+    const onToggleSource = vi.fn()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({
+      sources: [selectedSource, unselectedSource],
+    }))
+    render(
+      <LofarCatalogPanel
+        hidden={false}
+        selectedSourceIds={new Set([selectedSource.id])}
+        selectedTargetCount={25}
+        maximumTargetCount={25}
+        onToggleSource={onToggleSource}
+        onGoToVisibility={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
+    const selectedCheckbox = await screen.findByRole('checkbox', {
+      name: `${selectedSource.name} 계산 대상에서 제거`,
+    })
+    const unselectedCheckbox = screen.getByRole('checkbox', {
+      name: `${unselectedSource.name} 계산 대상에 추가`,
+    })
+
+    expect(selectedCheckbox).toBeEnabled()
+    expect(unselectedCheckbox).toBeDisabled()
+    await user.click(selectedCheckbox)
+    expect(onToggleSource).toHaveBeenCalledWith(selectedSource)
+  })
+
   it('cone search 조건을 전용 endpoint로 보내고 친숙한 이름·전파 형태·SIMBAD 유형을 표시한다', async () => {
     const user = userEvent.setup()
     const source = {

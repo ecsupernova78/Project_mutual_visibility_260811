@@ -82,6 +82,11 @@ describe('상호 가시성 인터페이스', () => {
     expect(screen.getAllByText('북위 + · 남위 −')).toHaveLength(3)
     expect(screen.getAllByText('동경 + · 서경 −')).toHaveLength(3)
     expect(screen.getAllByRole('checkbox')).toHaveLength(8)
+    const builtInTargetList = screen.getByRole('list', { name: '기본 3C 전파원' })
+    const builtInTargets = within(builtInTargetList).getAllByRole('listitem')
+    expect(builtInTargets.map((item) => item.querySelector('b')?.textContent)).toEqual([
+      '3C123', '3C273', '3C433', '3C295', '3C134',
+    ])
     expect(screen.getByLabelText('Fushan 관측에 포함')).not.toBeChecked()
     expect(screen.getByText(/해발고도 미지정으로 기본 0 m/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '공통 가시성 계산' })).toBeEnabled()
@@ -239,7 +244,7 @@ describe('상호 가시성 인터페이스', () => {
     expect(sourceCheckbox).toBeChecked()
     await user.click(screen.getByRole('button', { name: '관측 설정으로 이동' }))
     expect(screen.getByText('LOFAR DR3에서 가져온 천체')).toBeInTheDocument()
-    const importedList = screen.getByLabelText('가져온 LOFAR DR3 계산 대상')
+    const importedList = screen.getByLabelText('가져온 LOFAR DR3 천체 목록')
     expect(within(importedList).getByText(source.name, { selector: 'b' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
@@ -275,6 +280,82 @@ describe('상호 가시성 인터페이스', () => {
     await user.click(screen.getByRole('tab', { name: /LOFAR DR3 카탈로그/ }))
     expect(screen.getByLabelText('Source ID 앞부분 (선택)')).toHaveValue('ILTJ1234')
     expect(screen.getByRole('checkbox', { name: `${source.name} 계산 대상에서 제거` })).toBeChecked()
+  })
+
+  it('메인에서 LOFAR 천체를 해제해도 목록을 보존하고 계산 payload에만 선택 상태를 반영한다', async () => {
+    const user = userEvent.setup()
+    const source = {
+      id: 'lotss-dr3-toggle',
+      catalog: 'lofar_dr3',
+      source_id: 'ILTJ043704.43+294013.1',
+      name: '3C123',
+      ra_deg: 69.26846,
+      dec_deg: 29.67031,
+      ra_hms: '04:37:04.43',
+      dec_dms: '+29:40:13.1',
+      total_flux_mjy: 1000,
+      peak_flux_mjy: 900,
+      aliases: ['ILTJ043704.43+294013.1'],
+      morphology_code: 'S',
+      morphology_label: '단일 Gaussian',
+      morphology_description: '하나의 Gaussian으로 구성된 source',
+      separation_arcmin: null,
+      counterpart_name: 'NAME Per B',
+      counterpart_aliases: ['3C 123'],
+      object_type_code: 'SyG',
+      object_type_label: 'Seyfert Galaxy',
+      object_type_description: 'Seyfert galaxy',
+      crossmatch_separation_arcsec: 0.94,
+      crossmatch_confidence: 'high',
+      crossmatch_catalog: 'SIMBAD',
+    }
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (String(input).startsWith('/api/v1/catalogs/lotss-dr3/sources')) {
+        return new Response(JSON.stringify({
+          catalog: 'lofar_dr3', catalog_release: 'LoTSS DR3 v1.0', coordinate_frame: 'icrs',
+          reference_frequency_mhz: 144, tap_mode: 'async', search_mode: 'brightness',
+          enrichment_status: 'complete', enrichment_warning: null, morphology_codebook: [],
+          sort_by: 'total_flux', sort_direction: 'desc', limit: 100, source_prefix: null,
+          center_ra_deg: null, center_dec_deg: null, radius_arcmin: null,
+          result_count: 1, sources: [source],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
+    render(<App />)
+
+    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 카탈로그' }))
+    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
+    await user.click(await screen.findByRole('checkbox', { name: '3C123 계산 대상에 추가' }))
+    await user.click(screen.getByRole('button', { name: '관측 설정으로 이동' }))
+
+    const importedList = screen.getByLabelText('가져온 LOFAR DR3 천체 목록')
+    const importedCheckbox = within(importedList).getByRole('checkbox', {
+      name: '3C123 계산 대상에서 해제',
+    })
+    await user.click(importedCheckbox)
+    expect(within(importedList).getByText('3C123', { selector: 'b' })).toBeInTheDocument()
+    expect(within(importedList).getByRole('checkbox', {
+      name: '3C123 계산 대상으로 선택',
+    })).not.toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body)).custom_targets).toEqual([])
+
+    const unselectedCheckbox = within(importedList).getByRole('checkbox', {
+      name: '3C123 계산 대상으로 선택',
+    })
+    await user.click(unselectedCheckbox)
+    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body)).custom_targets).toHaveLength(1)
+
+    await user.click(within(importedList).getByRole('button', { name: '3C123 가져온 목록에서 삭제' }))
+    expect(screen.queryByLabelText('가져온 LOFAR DR3 천체 목록')).not.toBeInTheDocument()
   })
 
   it('Source ID prefix를 비워 두면 전체 카탈로그 TOP 목록을 요청한다', async () => {

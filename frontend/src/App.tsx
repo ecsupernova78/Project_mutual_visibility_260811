@@ -96,6 +96,36 @@ function formatRadioFlux(value: number | null | undefined, unit: string) {
   return `${new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 3 }).format(value)} ${unit}`
 }
 
+function snapshotLofarSource(source: LofarSource): CustomTargetSnapshot {
+  const aliases = [...new Set([
+    ...(source.aliases ?? []),
+    ...(source.source_id === source.name ? [] : [source.source_id]),
+  ])].slice(0, 5)
+
+  return {
+    id: source.id,
+    name: source.name,
+    aliases,
+    ra_deg: source.ra_deg,
+    dec_deg: source.dec_deg,
+    catalog: source.catalog,
+    catalog_source_id: source.source_id,
+    ...(source.total_flux_mjy === null ? {} : { total_flux_mjy: source.total_flux_mjy }),
+    ...(source.peak_flux_mjy === null ? {} : { peak_flux_mjy: source.peak_flux_mjy }),
+    ...(source.morphology_code == null ? {} : { morphology_code: source.morphology_code }),
+    ...(source.morphology_label == null ? {} : { morphology_label: source.morphology_label }),
+    ...(source.morphology_description == null ? {} : { morphology_description: source.morphology_description }),
+    ...(source.counterpart_name == null ? {} : { counterpart_name: source.counterpart_name }),
+    ...((source.counterpart_aliases?.length ?? 0) === 0 ? {} : { counterpart_aliases: source.counterpart_aliases }),
+    ...(source.object_type_code == null ? {} : { object_type_code: source.object_type_code }),
+    ...(source.object_type_label == null ? {} : { object_type_label: source.object_type_label }),
+    ...(source.object_type_description == null ? {} : { object_type_description: source.object_type_description }),
+    ...(source.crossmatch_separation_arcsec == null ? {} : { crossmatch_separation_arcsec: source.crossmatch_separation_arcsec }),
+    ...(source.crossmatch_confidence == null ? {} : { crossmatch_confidence: source.crossmatch_confidence }),
+    ...(source.crossmatch_catalog == null ? {} : { crossmatch_catalog: source.crossmatch_catalog }),
+  }
+}
+
 function NumericInput({
   id,
   label,
@@ -655,6 +685,9 @@ export default function App() {
   const [importedTargets, setImportedTargets] = useState<Map<string, CustomTargetSnapshot>>(
     () => new Map(),
   )
+  const [selectedImportedTargetIds, setSelectedImportedTargetIds] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [response, setResponse] = useState<VisibilityResponse | null>(null)
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null)
   const [overviewTargetIds, setOverviewTargetIds] = useState<Set<string>>(() => new Set())
@@ -696,7 +729,10 @@ export default function App() {
   }
 
   const toggleTarget = (id: string) => {
-    if (!selectedTargetIds.has(id) && selectedTargetIds.size + importedTargets.size >= MAXIMUM_TARGET_COUNT) return
+    if (
+      !selectedTargetIds.has(id)
+      && selectedTargetIds.size + selectedImportedTargetIds.size >= MAXIMUM_TARGET_COUNT
+    ) return
     invalidateResults()
     setSelectedTargetIds((current) => {
       const next = new Set(current)
@@ -708,41 +744,38 @@ export default function App() {
   }
 
   const toggleImportedSource = (source: LofarSource) => {
-    const isSelected = importedTargets.has(source.id)
-    if (!isSelected && selectedTargetIds.size + importedTargets.size >= MAXIMUM_TARGET_COUNT) return
+    const isSelected = selectedImportedTargetIds.has(source.id)
+    if (
+      !isSelected
+      && selectedTargetIds.size + selectedImportedTargetIds.size >= MAXIMUM_TARGET_COUNT
+    ) return
     invalidateResults()
     setImportedTargets((current) => {
       const next = new Map(current)
-      if (next.has(source.id)) {
-        next.delete(source.id)
-      } else {
-        const aliases = [...new Set([
-          ...(source.aliases ?? []),
-          ...(source.source_id === source.name ? [] : [source.source_id]),
-        ])].slice(0, 5)
-        next.set(source.id, {
-          id: source.id,
-          name: source.name,
-          aliases,
-          ra_deg: source.ra_deg,
-          dec_deg: source.dec_deg,
-          catalog: source.catalog,
-          catalog_source_id: source.source_id,
-          ...(source.total_flux_mjy === null ? {} : { total_flux_mjy: source.total_flux_mjy }),
-          ...(source.peak_flux_mjy === null ? {} : { peak_flux_mjy: source.peak_flux_mjy }),
-          ...(source.morphology_code == null ? {} : { morphology_code: source.morphology_code }),
-          ...(source.morphology_label == null ? {} : { morphology_label: source.morphology_label }),
-          ...(source.morphology_description == null ? {} : { morphology_description: source.morphology_description }),
-          ...(source.counterpart_name == null ? {} : { counterpart_name: source.counterpart_name }),
-          ...((source.counterpart_aliases?.length ?? 0) === 0 ? {} : { counterpart_aliases: source.counterpart_aliases }),
-          ...(source.object_type_code == null ? {} : { object_type_code: source.object_type_code }),
-          ...(source.object_type_label == null ? {} : { object_type_label: source.object_type_label }),
-          ...(source.object_type_description == null ? {} : { object_type_description: source.object_type_description }),
-          ...(source.crossmatch_separation_arcsec == null ? {} : { crossmatch_separation_arcsec: source.crossmatch_separation_arcsec }),
-          ...(source.crossmatch_confidence == null ? {} : { crossmatch_confidence: source.crossmatch_confidence }),
-          ...(source.crossmatch_catalog == null ? {} : { crossmatch_catalog: source.crossmatch_catalog }),
-        })
-      }
+      next.set(source.id, snapshotLofarSource(source))
+      return next
+    })
+    setSelectedImportedTargetIds((current) => {
+      const next = new Set(current)
+      if (next.has(source.id)) next.delete(source.id)
+      else next.add(source.id)
+      if (next.size + selectedTargetIds.size > 0) setSelectionError(false)
+      return next
+    })
+  }
+
+  const toggleImportedTarget = (id: string) => {
+    if (!importedTargets.has(id)) return
+    const isSelected = selectedImportedTargetIds.has(id)
+    if (
+      !isSelected
+      && selectedTargetIds.size + selectedImportedTargetIds.size >= MAXIMUM_TARGET_COUNT
+    ) return
+    invalidateResults()
+    setSelectedImportedTargetIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       if (next.size + selectedTargetIds.size > 0) setSelectionError(false)
       return next
     })
@@ -756,6 +789,11 @@ export default function App() {
       next.delete(id)
       return next
     })
+    setSelectedImportedTargetIds((current) => {
+      const next = new Set(current)
+      next.delete(id)
+      return next
+    })
   }
 
   const handleSubmit = async (event?: FormEvent<HTMLFormElement>) => {
@@ -764,7 +802,7 @@ export default function App() {
       setLocationSelectionError(true)
       return
     }
-    if (selectedTargetIds.size + importedTargets.size === 0) {
+    if (selectedTargetIds.size + selectedImportedTargetIds.size === 0) {
       setSelectionError(true)
       return
     }
@@ -795,7 +833,9 @@ export default function App() {
       target_ids: CATALOG_TARGETS.filter((target) => selectedTargetIds.has(target.id)).map(
         (target) => target.id,
       ),
-      custom_targets: [...importedTargets.values()],
+      custom_targets: [...importedTargets.values()].filter((target) => (
+        selectedImportedTargetIds.has(target.id)
+      )),
     }
 
     try {
@@ -848,7 +888,7 @@ export default function App() {
           onClick={() => setActiveTab('lofar')}
         >
           LOFAR DR3 카탈로그
-          {importedTargets.size > 0 && <span>{importedTargets.size}</span>}
+          {selectedImportedTargetIds.size > 0 && <span>{selectedImportedTargetIds.size}</span>}
         </button>
       </nav>
 
@@ -969,7 +1009,7 @@ export default function App() {
             <fieldset disabled={status === 'loading'}>
               <legend className="section-legend"><span>03</span>천체 카탈로그</legend>
               <div className="target-heading-row">
-                <p>기본 3C 전파원 · 전체 {selectedTargetIds.size + importedTargets.size}/{MAXIMUM_TARGET_COUNT}개</p>
+                <p>기본 3C 전파원 · 전체 {selectedTargetIds.size + selectedImportedTargetIds.size}/{MAXIMUM_TARGET_COUNT}개</p>
                 <button
                   type="button"
                   className="text-button"
@@ -981,7 +1021,7 @@ export default function App() {
                     if (selectedTargetIds.size === CATALOG_TARGETS.length) {
                       setSelectedTargetIds(new Set())
                     } else {
-                      const availableSlots = MAXIMUM_TARGET_COUNT - importedTargets.size
+                      const availableSlots = MAXIMUM_TARGET_COUNT - selectedImportedTargetIds.size
                       const next = new Set(selectedTargetIds)
                       for (const target of CATALOG_TARGETS) {
                         if (next.size >= availableSlots) break
@@ -994,36 +1034,57 @@ export default function App() {
                   {selectedTargetIds.size === CATALOG_TARGETS.length ? '전체 해제' : '전체 선택'}
                 </button>
               </div>
-              <div className="target-checks">
+              <ul className="target-checks" aria-label="기본 3C 전파원">
                 {CATALOG_TARGETS.map((target) => (
-                  <label key={target.id} className="target-check">
-                    <input
-                      type="checkbox"
-                      checked={selectedTargetIds.has(target.id)}
-                      disabled={
-                        !selectedTargetIds.has(target.id) &&
-                        selectedTargetIds.size + importedTargets.size >= MAXIMUM_TARGET_COUNT
-                      }
-                      onChange={() => toggleTarget(target.id)}
-                    />
-                    <span className="custom-check" aria-hidden="true">✓</span>
-                    <span>
-                      <b>{target.name}</b>
-                      <small>{target.coordinate}</small>
-                    </span>
-                  </label>
+                  <li key={target.id}>
+                    <label className="target-check">
+                      <input
+                        type="checkbox"
+                        checked={selectedTargetIds.has(target.id)}
+                        disabled={
+                          !selectedTargetIds.has(target.id) &&
+                          selectedTargetIds.size + selectedImportedTargetIds.size >= MAXIMUM_TARGET_COUNT
+                        }
+                        onChange={() => toggleTarget(target.id)}
+                      />
+                      <span className="custom-check" aria-hidden="true">✓</span>
+                      <span>
+                        <b>{target.name}</b>
+                        <small>{target.coordinate}</small>
+                      </span>
+                    </label>
+                  </li>
                 ))}
-              </div>
+              </ul>
               <div className="imported-targets-heading">
-                <p>LOFAR DR3에서 가져온 천체 <strong>{importedTargets.size}</strong></p>
+                <p>
+                  LOFAR DR3에서 가져온 천체
+                  <strong>선택 {selectedImportedTargetIds.size} / 불러옴 {importedTargets.size}</strong>
+                </p>
                 <button type="button" className="text-button" onClick={() => setActiveTab('lofar')}>
                   카탈로그 검색
                 </button>
               </div>
               {importedTargets.size > 0 ? (
-                <div className="imported-target-list" aria-label="가져온 LOFAR DR3 계산 대상">
+                <div className="imported-target-list" aria-label="가져온 LOFAR DR3 천체 목록">
                   {[...importedTargets.values()].map((target) => (
-                    <article key={target.id} className="imported-target-card">
+                    <article
+                      key={target.id}
+                      className={`imported-target-card ${selectedImportedTargetIds.has(target.id) ? 'is-selected' : 'is-unselected'}`}
+                    >
+                      <label className="imported-target-select">
+                        <input
+                          type="checkbox"
+                          checked={selectedImportedTargetIds.has(target.id)}
+                          disabled={
+                            !selectedImportedTargetIds.has(target.id)
+                            && selectedTargetIds.size + selectedImportedTargetIds.size >= MAXIMUM_TARGET_COUNT
+                          }
+                          aria-label={`${target.name} ${selectedImportedTargetIds.has(target.id) ? '계산 대상에서 해제' : '계산 대상으로 선택'}`}
+                          onChange={() => toggleImportedTarget(target.id)}
+                        />
+                        <span aria-hidden="true">✓</span>
+                      </label>
                       <span>
                         <b>{target.name}</b>
                         <small>{target.catalog_source_id} · {target.ra_deg.toFixed(4)}°, {target.dec_deg.toFixed(4)}°</small>
@@ -1038,10 +1099,10 @@ export default function App() {
                       </span>
                       <button
                         type="button"
-                        aria-label={`${target.name} 계산 대상에서 제거`}
+                        aria-label={`${target.name} 가져온 목록에서 삭제`}
                         onClick={() => removeImportedTarget(target.id)}
                       >
-                        제거
+                        목록 삭제
                       </button>
                     </article>
                   ))}
@@ -1085,8 +1146,8 @@ export default function App() {
 
       <LofarCatalogPanel
         hidden={activeTab !== 'lofar'}
-        selectedSourceIds={new Set(importedTargets.keys())}
-        selectedTargetCount={selectedTargetIds.size + importedTargets.size}
+        selectedSourceIds={selectedImportedTargetIds}
+        selectedTargetCount={selectedTargetIds.size + selectedImportedTargetIds.size}
         maximumTargetCount={MAXIMUM_TARGET_COUNT}
         onToggleSource={toggleImportedSource}
         onGoToVisibility={() => setActiveTab('visibility')}
