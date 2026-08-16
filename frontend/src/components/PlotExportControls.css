@@ -1,0 +1,55 @@
+.plot-export-controls {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+}
+
+.plot-export-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(148, 181, 203, .2);
+  border-radius: 7px;
+  background: rgba(98, 219, 231, .045);
+  color: #839cad;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color .18s, background-color .18s, color .18s;
+}
+
+.plot-export-button:hover:not(:disabled) {
+  border-color: rgba(98, 219, 231, .45);
+  background: rgba(98, 219, 231, .09);
+  color: var(--cyan);
+}
+
+.plot-export-button:disabled {
+  cursor: wait;
+  opacity: .45;
+}
+
+.plot-export-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plot-export-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -51,5 +51,35 @@ describe('AltitudeChart', () => {
     )
     expect(screen.getByRole('img')).toHaveAccessibleName(/3C 84 altitude–time chart/)
     expect(screen.getByRole('slider', { name: 'Explore time samples' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy 3C 84 altitude–time plot image' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Download 3C 84 altitude–time plot image' })).toBeInTheDocument()
+  })
+
+  it('plots a 0 to 90 degree axis and clips below-horizon path segments', () => {
+    const { container } = render(
+      <AltitudeChart
+        target={target({
+          location_series: [{
+            location_id: 'narrabri',
+            location_name: 'Aus - Narrabri',
+            altitudes_deg: [-30, 45],
+          }],
+        })}
+        times={times}
+        minimumAltitude={15}
+      />,
+    )
+
+    const yTickLabels = [...container.querySelectorAll('.chart-grid > g > text')]
+      .slice(0, 7)
+      .map((label) => label.textContent)
+    expect(yTickLabels).toEqual(['0°', '15°', '30°', '45°', '60°', '75°', '90°'])
+
+    const altitudePath = container.querySelector('.altitude-line')
+    expect(altitudePath).toHaveAttribute('d', 'M58.00,429.33 L896.00,176.00')
+    expect(altitudePath?.parentElement).toHaveAttribute('clip-path', expect.stringMatching(/^url\(#visible-/))
+    expect(container.querySelector('desc')).toHaveTextContent(
+      'The plotted altitude range is 0 to 90 degrees',
+    )
   })
 })

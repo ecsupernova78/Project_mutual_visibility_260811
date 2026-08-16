@@ -1,7 +1,8 @@
-import { useId, useState, type PointerEvent } from 'react'
+import { useId, useRef, useState, type PointerEvent } from 'react'
 
 import type { VisibilityTarget } from '../types'
 import { getSiteChartStyle } from './chartStyles'
+import { PlotExportControls } from './PlotExportControls'
 
 interface AltitudeChartProps {
   target: VisibilityTarget
@@ -14,9 +15,9 @@ const HEIGHT = 382
 const MARGIN = { top: 24, right: 24, bottom: 54, left: 58 }
 const PLOT_WIDTH = WIDTH - MARGIN.left - MARGIN.right
 const PLOT_HEIGHT = HEIGHT - MARGIN.top - MARGIN.bottom
-const Y_MIN = -90
+const Y_MIN = 0
 const Y_MAX = 90
-const Y_TICKS = [-90, -60, -30, 0, 30, 60, 90]
+const Y_TICKS = [0, 15, 30, 45, 60, 75, 90]
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(Math.max(value, minimum), maximum)
 }
@@ -64,13 +65,14 @@ export function AltitudeChart({
   minimumAltitude,
 }: AltitudeChartProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
   const rawId = useId()
   const patternId = `visible-${rawId.replace(/:/g, '')}`
   const pointCount = times.length
   const x = (index: number) =>
     MARGIN.left + (pointCount <= 1 ? 0 : (index / (pointCount - 1)) * PLOT_WIDTH)
   const y = (altitude: number) =>
-    MARGIN.top + ((Y_MAX - clamp(altitude, Y_MIN, Y_MAX)) / (Y_MAX - Y_MIN)) * PLOT_HEIGHT
+    MARGIN.top + ((Y_MAX - altitude) / (Y_MAX - Y_MIN)) * PLOT_HEIGHT
 
   const paths = target.location_series.map((series) => {
     let drawing = false
@@ -141,8 +143,15 @@ export function AltitudeChart({
         </span>
       </div>
 
+      <PlotExportControls
+        svgRef={svgRef}
+        filename={`${target.name}-altitude-time-${times[0]}-${times.at(-1) ?? times[0]}`}
+        plotLabel={`${target.name} altitude–time plot`}
+      />
+
       <div className="chart-frame">
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           role="img"
           aria-labelledby={`${patternId}-title ${patternId}-description`}
@@ -150,7 +159,8 @@ export function AltitudeChart({
           <title id={`${patternId}-title`}>{target.name} altitude–time chart</title>
           <desc id={`${patternId}-description`}>
             Compares geometric altitude at {target.location_series.length} observing {target.location_series.length === 1 ? 'site' : 'sites'} over UTC
-            against an altitude threshold of {minimumAltitude} degrees. Negative altitudes are below the horizon.
+            against an altitude threshold of {minimumAltitude} degrees. The plotted altitude range is 0 to 90 degrees;
+            negative altitudes below the horizon are clipped from the chart.
           </desc>
           <defs>
             <pattern id={patternId} width="8" height="8" patternUnits="userSpaceOnUse">
@@ -271,7 +281,7 @@ export function AltitudeChart({
             <g className="chart-tooltip" pointerEvents="none">
               {target.location_series.map((series, index) => {
                 const altitude = series.altitudes_deg[safeActiveIndex]
-                return Number.isFinite(altitude) ? (
+                return Number.isFinite(altitude) && altitude >= Y_MIN && altitude <= Y_MAX ? (
                   <circle
                     key={series.location_id}
                     cx={activeX}

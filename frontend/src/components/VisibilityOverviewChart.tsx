@@ -1,7 +1,8 @@
-import { useId, useState, type CSSProperties, type PointerEvent } from 'react'
+import { useId, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 
 import type { VisibilityTarget } from '../types'
 import { getSiteChartStyle, getTargetColor } from './chartStyles'
+import { PlotExportControls } from './PlotExportControls'
 
 interface VisibilityOverviewChartProps {
   targets: VisibilityTarget[]
@@ -15,9 +16,9 @@ const HEIGHT = 430
 const MARGIN = { top: 28, right: 24, bottom: 58, left: 58 }
 const PLOT_WIDTH = WIDTH - MARGIN.left - MARGIN.right
 const PLOT_HEIGHT = HEIGHT - MARGIN.top - MARGIN.bottom
-const Y_MIN = -90
+const Y_MIN = 0
 const Y_MAX = 90
-const Y_TICKS = [-90, -60, -30, 0, 30, 60, 90]
+const Y_TICKS = [0, 15, 30, 45, 60, 75, 90]
 const MAX_TOOLTIP_TARGETS = 12
 
 function clamp(value: number, minimum: number, maximum: number) {
@@ -71,6 +72,7 @@ export function VisibilityOverviewChart({
 }: VisibilityOverviewChartProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const [isTableOpen, setIsTableOpen] = useState(false)
+  const svgRef = useRef<SVGSVGElement>(null)
   const rawId = useId()
   const chartId = `overview-${rawId.replace(/:/g, '')}`
   const pointCount = times.length
@@ -78,7 +80,7 @@ export function VisibilityOverviewChart({
   const x = (index: number) =>
     MARGIN.left + (pointCount <= 1 ? 0 : (index / (pointCount - 1)) * PLOT_WIDTH)
   const y = (altitude: number) =>
-    MARGIN.top + ((Y_MAX - clamp(altitude, Y_MIN, Y_MAX)) / (Y_MAX - Y_MIN)) * PLOT_HEIGHT
+    MARGIN.top + ((Y_MAX - altitude) / (Y_MAX - Y_MIN)) * PLOT_HEIGHT
 
   const paths = targets.flatMap((target, targetIndex) =>
     target.location_series.map((series, siteIndex) => {
@@ -171,8 +173,15 @@ export function VisibilityOverviewChart({
         </div>
       </div>
 
+      <PlotExportControls
+        svgRef={svgRef}
+        filename={`visibility-overview-altitude-time-${times[0]}-${times.at(-1) ?? times[0]}`}
+        plotLabel="overview altitude–time plot"
+      />
+
       <div className="chart-frame overview-chart-frame">
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           role="img"
           aria-labelledby={`${chartId}-title`}
@@ -185,7 +194,8 @@ export function VisibilityOverviewChart({
             samples in the selected time window. Color identifies the target, line style identifies
             the observing site, the vertical reference marks the reference UTC, and the red dashed line
             marks the altitude threshold. Visibility is evaluated at computed samples and does not
-            establish continuous visibility between samples.
+            establish continuous visibility between samples. The plotted altitude range is 0 to 90
+            degrees; negative altitudes below the horizon are clipped from the chart.
           </desc>
           <clipPath id={`${chartId}-clip`}>
             <rect x={MARGIN.left} y={MARGIN.top} width={PLOT_WIDTH} height={PLOT_HEIGHT} />
