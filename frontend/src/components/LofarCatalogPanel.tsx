@@ -29,6 +29,11 @@ interface ModeState {
 const LOCAL_PAGE_SIZE = 25
 const RESULT_LIMIT_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const
 const SOURCE_PREFIX_PATTERN = /^[A-Za-z0-9][A-Za-z0-9+.-]{0,79}$/
+const HANGUL_PATTERN = new RegExp('[\\u3131-\\u318e\\uac00-\\ud7a3]')
+
+function englishCatalogText(value: string | null | undefined) {
+  return value && !HANGUL_PATTERN.test(value) ? value : null
+}
 
 function emptyModeState(): ModeState {
   return {
@@ -106,7 +111,7 @@ interface LofarCatalogPanelProps {
 
 function formatFlux(value: number | null) {
   if (value === null || !Number.isFinite(value)) return '—'
-  return new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 3 }).format(value)
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 }).format(value)
 }
 
 function formatAngularDistance(value: number | null | undefined, unit: 'arcmin' | 'arcsec') {
@@ -185,7 +190,7 @@ export function LofarCatalogPanel({
     } catch (caught) {
       if (controller.signal.aborted) return
       patchModeState(request.mode, {
-        error: caught instanceof Error ? caught.message : 'LOFAR DR3 검색 중 오류가 발생했습니다.',
+        error: caught instanceof Error ? caught.message : 'An unexpected error occurred while searching LOFAR DR3.',
         canRetry: true,
         status: 'error',
       })
@@ -199,7 +204,7 @@ export function LofarCatalogPanel({
     if (mode === 'brightness') {
       if (sourcePrefixInvalid) {
         patchModeState(mode, {
-          error: 'Source ID 앞부분은 영문자나 숫자로 시작하고, 이후에는 영문자, 숫자, +, 마침표, 하이픈만 입력해 주세요.',
+          error: 'The Source ID prefix must begin with a letter or number and contain only letters, numbers, +, periods, and hyphens.',
           notice: null,
           canRetry: false,
           status: 'error',
@@ -220,7 +225,7 @@ export function LofarCatalogPanel({
 
     if (!validNumber(coneRa, 0, 360, false) || !validNumber(coneDec, -90, 90) || coneRadiusInvalid) {
       patchModeState(mode, {
-        error: '중심 좌표는 RA 0° 이상 360° 미만, Dec −90° 이상 90° 이하로 입력하고 반경은 0.1–60 arcmin으로 지정해 주세요.',
+        error: 'Enter RA from 0° (inclusive) to 360° (exclusive), Dec from −90° to 90°, and a radius from 0.1 to 60 arcmin.',
         notice: null,
         canRetry: false,
         status: 'error',
@@ -251,13 +256,13 @@ export function LofarCatalogPanel({
       error: null,
       canRetry: false,
       notice: previousResponse
-        ? '화면 대기를 중단했습니다. 이전 결과를 계속 표시합니다. 서버 작업은 계속될 수 있으며, 완료되거나 제한시간에 도달하면 정리됩니다.'
-        : '화면 대기를 중단했습니다. 서버 작업은 계속될 수 있으며, 완료되거나 제한시간에 도달하면 정리됩니다.',
+        ? 'Stopped waiting in this browser. The previous results remain visible. The server job may continue until it finishes or reaches its time limit, after which it will be cleaned up.'
+        : 'Stopped waiting in this browser. The server job may continue until it finishes or reaches its time limit, after which it will be cleaned up.',
     })
   }
 
   const atTargetLimit = selectedTargetCount >= maximumTargetCount
-  const submitLabel = mode === 'brightness' ? 'LOFAR DR3 목록 불러오기' : '좌표 주변 천체 검색'
+  const submitLabel = mode === 'brightness' ? 'Load LOFAR DR3 sources' : 'Search around coordinates'
 
   return (
     <main
@@ -270,10 +275,11 @@ export function LofarCatalogPanel({
       <header className="catalog-hero">
         <div>
           <p className="eyebrow">LOFAR TWO-METRE SKY SURVEY · DATA RELEASE 3</p>
-          <h1>LOFAR DR3 카탈로그</h1>
+          <h1>LOFAR DR3 Catalog</h1>
           <p>
-            144 MHz 전파원을 밝기 순으로 살펴보거나 좌표 주변에서 찾은 뒤, 원하는 천체를 시간–고도 계산 대상에
-            추가하세요. 알려진 이름과 물리 유형은 SIMBAD 위치 대응 결과를 함께 보여줍니다.
+            Browse 144 MHz radio sources by flux density or search around a sky position, then add sources to the
+            altitude–time calculation. Familiar names and physical classifications are shown when a positional SIMBAD
+            counterpart is available.
           </p>
           <p className="catalog-provenance">
             Data: <a href="https://lofar-surveys.org/dr3.html">LoTSS DR3 v1.0</a>
@@ -286,16 +292,16 @@ export function LofarCatalogPanel({
           </p>
         </div>
         <div className="catalog-selection-summary" aria-live="polite">
-          <span>계산 대상</span>
+          <span>Selected targets</span>
           <strong>{selectedTargetCount} / {maximumTargetCount}</strong>
-          <button type="button" onClick={onGoToVisibility}>관측 설정으로 이동</button>
+          <button type="button" onClick={onGoToVisibility}>Go to Observation Setup</button>
         </div>
       </header>
 
       <section className="catalog-search-card" aria-labelledby="lofar-search-title">
         <form onSubmit={handleSubmit} aria-busy={activeState.status === 'loading'} noValidate>
           <fieldset className="catalog-mode-switch" disabled={anyLoading}>
-            <legend>검색 방식</legend>
+            <legend>Search mode</legend>
             <label className={mode === 'brightness' ? 'is-active' : ''}>
               <input
                 type="radio"
@@ -304,7 +310,7 @@ export function LofarCatalogPanel({
                 checked={mode === 'brightness'}
                 onChange={() => setMode('brightness')}
               />
-              <span><strong>밝기 순 목록</strong><small>카탈로그 전체의 밝은 전파원</small></span>
+              <span><strong>Brightest sources</strong><small>Bright radio sources across the catalog</small></span>
             </label>
             <label className={mode === 'cone' ? 'is-active' : ''}>
               <input
@@ -314,48 +320,48 @@ export function LofarCatalogPanel({
                 checked={mode === 'cone'}
                 onChange={() => setMode('cone')}
               />
-              <span><strong>좌표 주변 검색</strong><small>지정한 중심과 반경의 전파원</small></span>
+              <span><strong>Cone search</strong><small>Radio sources within a specified sky region</small></span>
             </label>
           </fieldset>
 
           <div className="catalog-search-heading">
             <div>
               <p className="eyebrow">TAP catalog query</p>
-              <h2 id="lofar-search-title">{mode === 'brightness' ? '밝기 순 목록 불러오기' : 'Source cone search'}</h2>
+              <h2 id="lofar-search-title">{mode === 'brightness' ? 'Load brightest sources' : 'Source cone search'}</h2>
             </div>
             <span>lotss_dr3.main_sources · 144 MHz</span>
           </div>
 
           {mode === 'brightness' ? (
             <fieldset className="catalog-query-fieldset" disabled={activeState.status === 'loading'}>
-              <legend className="sr-only">LOFAR DR3 밝기 목록 조건</legend>
+              <legend className="sr-only">LOFAR DR3 brightness search parameters</legend>
               <div className="catalog-query-grid">
                 <label className="catalog-field catalog-name-query">
-                  <span>Source ID 앞부분 (선택)</span>
+                  <span>Source ID prefix (optional)</span>
                   <input
                     type="search"
                     value={sourcePrefix}
                     maxLength={80}
                     pattern="[A-Za-z0-9][A-Za-z0-9+.-]{0,79}"
-                    title="영문자나 숫자로 시작하고, 이후에는 영문자, 숫자, +, 마침표, 하이픈만 입력할 수 있습니다."
-                    placeholder="비워 두면 전체 카탈로그"
+                    title="Begin with a letter or number; subsequent characters may be letters, numbers, +, periods, or hyphens."
+                    placeholder="Leave blank for the entire catalog"
                     aria-describedby="lofar-search-help"
                     aria-invalid={sourcePrefixInvalid}
                     onChange={(event) => setSourcePrefix(event.currentTarget.value)}
                   />
                 </label>
                 <label className="catalog-field">
-                  <span>밝기 기준</span>
+                  <span>Flux measure</span>
                   <select value={sortBy} onChange={(event) => setSortBy(event.currentTarget.value as LofarSortField)}>
-                    <option value="total_flux">총 플럭스</option>
-                    <option value="peak_flux">피크 플럭스</option>
+                    <option value="total_flux">Total flux</option>
+                    <option value="peak_flux">Peak flux</option>
                   </select>
                 </label>
                 <label className="catalog-field">
-                  <span>정렬 방향</span>
+                  <span>Sort order</span>
                   <select value={sortDirection} onChange={(event) => setSortDirection(event.currentTarget.value as SortDirection)}>
-                    <option value="desc">밝은 순</option>
-                    <option value="asc">어두운 순</option>
+                    <option value="desc">Brightest first</option>
+                    <option value="asc">Faintest first</option>
                   </select>
                 </label>
                 <ResultLimitField value={limit} onChange={setLimit} />
@@ -363,10 +369,10 @@ export function LofarCatalogPanel({
             </fieldset>
           ) : (
             <fieldset className="catalog-query-fieldset" disabled={activeState.status === 'loading'}>
-              <legend className="sr-only">LOFAR DR3 좌표 주변 검색 조건</legend>
+              <legend className="sr-only">LOFAR DR3 cone search parameters</legend>
               <div className="catalog-query-grid catalog-cone-grid">
                 <label className="catalog-field">
-                  <span>중심 RA (deg)</span>
+                  <span>Center RA (deg)</span>
                   <input
                     type="number"
                     min="0"
@@ -374,14 +380,14 @@ export function LofarCatalogPanel({
                     step="any"
                     required
                     value={coneRa}
-                    placeholder="예: 69.26825"
+                    placeholder="e.g. 69.26825"
                     aria-describedby="lofar-search-help"
                     aria-invalid={coneRaInvalid}
                     onChange={(event) => setConeRa(event.currentTarget.value)}
                   />
                 </label>
                 <label className="catalog-field">
-                  <span>중심 Dec (deg)</span>
+                  <span>Center Dec (deg)</span>
                   <input
                     type="number"
                     min="-90"
@@ -389,14 +395,14 @@ export function LofarCatalogPanel({
                     step="any"
                     required
                     value={coneDec}
-                    placeholder="예: 29.67052"
+                    placeholder="e.g. 29.67052"
                     aria-describedby="lofar-search-help"
                     aria-invalid={coneDecInvalid}
                     onChange={(event) => setConeDec(event.currentTarget.value)}
                   />
                 </label>
                 <label className="catalog-field">
-                  <span>검색 반경 (arcmin)</span>
+                  <span>Search radius (arcmin)</span>
                   <input
                     type="number"
                     min="0.1"
@@ -410,18 +416,18 @@ export function LofarCatalogPanel({
                   />
                 </label>
                 <label className="catalog-field">
-                  <span>정렬 기준</span>
+                  <span>Sort field</span>
                   <select value={coneSortBy} onChange={(event) => setConeSortBy(event.currentTarget.value as LofarConeSortField)}>
-                    <option value="distance">중심 거리</option>
-                    <option value="total_flux">총 플럭스</option>
-                    <option value="peak_flux">피크 플럭스</option>
+                    <option value="distance">Angular separation</option>
+                    <option value="total_flux">Total flux</option>
+                    <option value="peak_flux">Peak flux</option>
                   </select>
                 </label>
                 <label className="catalog-field">
-                  <span>정렬 방향</span>
+                  <span>Sort order</span>
                   <select value={coneSortDirection} onChange={(event) => setConeSortDirection(event.currentTarget.value as SortDirection)}>
-                    <option value="asc">가까운/낮은 값 순</option>
-                    <option value="desc">먼/높은 값 순</option>
+                    <option value="asc">Nearest / lowest first</option>
+                    <option value="desc">Farthest / highest first</option>
                   </select>
                 </label>
                 <ResultLimitField value={coneLimit} onChange={setConeLimit} />
@@ -431,28 +437,29 @@ export function LofarCatalogPanel({
 
           <p id="lofar-search-help" className="catalog-form-help">
             {mode === 'brightness'
-              ? 'Source ID를 비워 두면 선택한 밝기 기준의 전체 상위 목록을 가져옵니다.'
-              : 'ICRS 십진도 좌표를 사용합니다. 반경은 0.1–60 arcmin이며 기본 정렬은 중심에서 가까운 순입니다.'}
-            {' '}결과는 화면에서 25개씩 나누어 표시합니다.
+              ? 'Leave the Source ID prefix blank to retrieve the top sources across the catalog using the selected flux measure.'
+              : 'Enter decimal-degree ICRS coordinates. The radius may range from 0.1 to 60 arcmin; results are initially ordered by angular separation.'}
+            {' '}Results are displayed in pages of 25 sources.
           </p>
           <details className="catalog-query-preview">
-            <summary>실행할 TAP 쿼리 보기</summary>
+            <summary>View TAP query</summary>
             <pre><code>{adqlPreview}</code></pre>
-            <p>알려진 이름과 물리 유형은 이 LoTSS 결과에 SIMBAD 위치 대응을 추가한 정보입니다.</p>
+            <p>Familiar names and physical classifications are added through positional cross-matching with SIMBAD.</p>
           </details>
           <div className="catalog-search-actions">
             <button className="catalog-search-button" type="submit" disabled={activeState.status === 'loading'}>
-              {activeState.status === 'loading' ? 'TAP 작업 실행 중…' : submitLabel}
+              {activeState.status === 'loading' ? 'Running TAP job…' : submitLabel}
             </button>
             {activeState.status === 'loading' && (
               <button className="catalog-cancel-button" type="button" onClick={cancelSearch}>
-                화면 대기 중단
+                Stop waiting
               </button>
             )}
           </div>
           {activeState.status === 'loading' && (
             <p className="catalog-cancel-help">
-              화면 대기만 중단합니다. 서버 작업은 계속될 수 있으며, 완료되거나 제한시간에 도달하면 정리됩니다.
+              This stops waiting in the browser only. The server job may continue until it finishes or reaches its time limit,
+              after which it will be cleaned up.
             </p>
           )}
           {activeState.notice && <p className="catalog-request-notice" role="status">{activeState.notice}</p>}
@@ -481,10 +488,10 @@ export function LofarCatalogPanel({
 function ResultLimitField({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   return (
     <label className="catalog-field">
-      <span>불러올 천체 수 (TOP)</span>
+      <span>Maximum results (TOP)</span>
       <select value={value} onChange={(event) => onChange(Number(event.currentTarget.value))}>
         {RESULT_LIMIT_OPTIONS.map((option) => (
-          <option key={option} value={option}>{option}개</option>
+          <option key={option} value={option}>{option}</option>
         ))}
       </select>
     </label>
@@ -524,66 +531,66 @@ function CatalogResults({
       <header className="catalog-results-heading">
         <div>
           <p className="eyebrow">Query results</p>
-          <h2 id="lofar-results-title">{isCone ? '좌표 주변 검색 결과' : '밝기 순 카탈로그 결과'}</h2>
+          <h2 id="lofar-results-title">{isCone ? 'Cone search results' : 'Brightness-ranked catalog results'}</h2>
         </div>
-        {response && <span>{response.result_count}개 반환 · TOP {response.limit}</span>}
+        {response && <span>{response.result_count} returned · TOP {response.limit}</span>}
       </header>
 
       {status === 'idle' && !response && (
         <div className="catalog-message">
-          <strong>{isCone ? '중심 좌표와 검색 반경을 입력하세요.' : '목록 조건을 선택하세요.'}</strong>
-          <span>{isCone ? '지정한 원뿔 영역 안의 LoTSS DR3 전파원을 찾습니다.' : '카탈로그 전체에서 밝기 순 상위 천체를 가져옵니다.'}</span>
+          <strong>{isCone ? 'Enter a center position and search radius.' : 'Choose the catalog query parameters.'}</strong>
+          <span>{isCone ? 'Find LoTSS DR3 radio sources within the specified cone.' : 'Retrieve the brightest sources across the catalog.'}</span>
         </div>
       )}
       {status === 'loading' && (
         <p className={response ? 'catalog-refresh-status' : 'catalog-inline-status'} role="status">
           <span className="button-spinner" aria-hidden="true" />
-          ASTRON TAP 비동기 작업을 실행 중입니다. 이어서 알려진 이름을 확인하므로 결과 준비에 시간이 걸릴 수 있습니다.
+          Running an asynchronous ASTRON TAP job. Resolving familiar names afterward may take additional time.
         </p>
       )}
       {status === 'error' && (
         <div className={response ? 'catalog-error catalog-error-inline' : 'catalog-error'} role="alert">
           <span>{error}</span>
-          {onRetry && <button type="button" onClick={onRetry}>같은 조건으로 다시 시도</button>}
+          {onRetry && <button type="button" onClick={onRetry}>Retry with the same parameters</button>}
         </div>
       )}
       {status === 'success' && response && sources.length === 0 && (
         <div className="catalog-message">
-          <strong>일치하는 천체가 없습니다.</strong>
-          <span>{isCone ? '검색 반경을 넓히거나 중심 좌표를 확인해 주세요.' : 'Source ID 앞부분을 줄이거나 비워서 다시 불러오세요.'}</span>
+          <strong>No matching sources found.</strong>
+          <span>{isCone ? 'Increase the search radius or check the center coordinates.' : 'Shorten or clear the Source ID prefix and try again.'}</span>
         </div>
       )}
 
       {response && sources.length > 0 && (
         <>
           <p className="catalog-result-summary" role="status">
-            {response.result_count}개 결과 · {sortLabel(response.sort_by)}{' '}
-            {response.sort_direction === 'desc' ? '내림차순' : '오름차순'}
+            {response.result_count} {response.result_count === 1 ? 'result' : 'results'} · {sortLabel(response.sort_by)}{' '}
+            {response.sort_direction === 'desc' ? 'descending' : 'ascending'}
             {isCone
-              ? ` · 중심 ${response.center_ra_deg ?? '—'}°, ${response.center_dec_deg ?? '—'}° · 반경 ${response.radius_arcmin ?? '—'}′`
-              : response.source_prefix ? ` · Source ID “${response.source_prefix}”` : ' · 전체 카탈로그'}
+              ? ` · center ${response.center_ra_deg ?? '—'}°, ${response.center_dec_deg ?? '—'}° · radius ${response.radius_arcmin ?? '—'}′`
+              : response.source_prefix ? ` · Source ID “${response.source_prefix}”` : ' · entire catalog'}
           </p>
           <EnrichmentNotice response={response} />
           <SourceTypeLegend sources={sources} morphologyCodebook={response.morphology_codebook} />
           <div className="catalog-table-wrap">
             <table>
-              <caption>LOFAR DR3 TAP 조회 결과. 체크한 천체는 관측 가시성 계산 대상으로 유지됩니다.</caption>
+              <caption>LOFAR DR3 TAP results. Selected sources remain available for the observation-visibility calculation.</caption>
               <thead>
                 <tr>
-                  <th scope="col">계산</th>
-                  <th scope="col">천체 이름</th>
-                  <th scope="col">Source 유형</th>
-                  <th scope="col">ICRS 좌표</th>
+                  <th scope="col">Select</th>
+                  <th scope="col">Source name</th>
+                  <th scope="col">Classification</th>
+                  <th scope="col">ICRS coordinates</th>
                   {isCone && (
                     <th scope="col" aria-sort={response.sort_by === 'distance' ? sortAria(response.sort_direction) : 'none'}>
-                      중심 거리 <small>arcmin</small>
+                      Angular separation <small>arcmin</small>
                     </th>
                   )}
                   <th scope="col" aria-sort={response.sort_by === 'total_flux' ? sortAria(response.sort_direction) : 'none'}>
-                    총 플럭스 <small>mJy</small>
+                    Total flux <small>mJy</small>
                   </th>
                   <th scope="col" aria-sort={response.sort_by === 'peak_flux' ? sortAria(response.sort_direction) : 'none'}>
-                    피크 플럭스 <small>mJy/beam</small>
+                    Peak flux <small>mJy/beam</small>
                   </th>
                 </tr>
               </thead>
@@ -600,7 +607,7 @@ function CatalogResults({
                             checked={selected}
                             disabled={disabled}
                             onChange={() => onToggleSource(source)}
-                            aria-label={`${source.name} ${selected ? '계산 대상에서 제거' : '계산 대상에 추가'}`}
+                            aria-label={`${source.name}: ${selected ? 'remove from visibility targets' : 'add to visibility targets'}`}
                           />
                           <span aria-hidden="true">✓</span>
                         </label>
@@ -610,7 +617,7 @@ function CatalogResults({
                         {source.counterpart_name && <small>SIMBAD · {source.counterpart_name}</small>}
                         <small>LoTSS · {source.source_id}</small>
                         {(source.aliases?.length ?? 0) > 0 && (
-                          <small className="catalog-aliases">별칭 · {source.aliases.slice(0, 3).join(' · ')}</small>
+                          <small className="catalog-aliases">Aliases · {source.aliases.slice(0, 3).join(' · ')}</small>
                         )}
                       </th>
                       <td><SourceClassification source={source} enrichmentStatus={response.enrichment_status} /></td>
@@ -625,10 +632,10 @@ function CatalogResults({
             </table>
           </div>
           {totalPages > 1 && (
-            <nav className="catalog-pagination" aria-label="LOFAR 결과 페이지">
-              <button type="button" disabled={safePage <= 1} onClick={() => onChangePage(safePage - 1)}>이전</button>
-              <span><strong>{safePage}</strong> / {totalPages}페이지 · {rangeStart}–{rangeEnd} / {sources.length}</span>
-              <button type="button" disabled={safePage >= totalPages} onClick={() => onChangePage(safePage + 1)}>다음</button>
+            <nav className="catalog-pagination" aria-label="LOFAR result pages">
+              <button type="button" disabled={safePage <= 1} onClick={() => onChangePage(safePage - 1)}>Previous</button>
+              <span><strong>{safePage}</strong> / {totalPages} pages · {rangeStart}–{rangeEnd} / {sources.length}</span>
+              <button type="button" disabled={safePage >= totalPages} onClick={() => onChangePage(safePage + 1)}>Next</button>
             </nav>
           )}
         </>
@@ -636,7 +643,7 @@ function CatalogResults({
 
       {atTargetLimit && (
         <p className="catalog-limit-note" role="status">
-          계산 대상은 기본 3C 천체와 LOFAR 천체를 합해 최대 {maximumTargetCount}개입니다.
+          You can select up to {maximumTargetCount} targets across the example 3C sources and LOFAR sources.
         </p>
       )}
     </section>
@@ -644,8 +651,8 @@ function CatalogResults({
 }
 
 function sortLabel(sortBy: LofarConeSortField) {
-  if (sortBy === 'distance') return '중심 거리'
-  return sortBy === 'total_flux' ? '총 플럭스' : '피크 플럭스'
+  if (sortBy === 'distance') return 'angular separation'
+  return sortBy === 'total_flux' ? 'total flux' : 'peak flux'
 }
 
 function sortAria(direction: SortDirection) {
@@ -654,10 +661,11 @@ function sortAria(direction: SortDirection) {
 
 function EnrichmentNotice({ response }: { response: LofarSearchResponse }) {
   if (!response.enrichment_status || response.enrichment_status === 'complete') return null
+  const warning = englishCatalogText(response.enrichment_warning)
   return (
     <p className={`catalog-enrichment-notice is-${response.enrichment_status}`} role="status">
-      <strong>SIMBAD 이름·유형 보강 {response.enrichment_status === 'partial' ? '일부 완료' : '사용 불가'}</strong>
-      <span>{response.enrichment_warning ?? 'LoTSS 좌표와 밝기 결과는 그대로 사용할 수 있습니다.'}</span>
+      <strong>SIMBAD name and type enrichment {response.enrichment_status === 'partial' ? 'partially completed' : 'unavailable'}</strong>
+      <span>{warning ?? 'The LoTSS positions and flux measurements remain available.'}</span>
     </p>
   )
 }
@@ -670,27 +678,31 @@ function SourceClassification({
   enrichmentStatus: LofarSearchResponse['enrichment_status'] | undefined
 }) {
   const hasCounterpart = Boolean(source.crossmatch_catalog && source.counterpart_name)
+  const morphologyLabel = englishCatalogText(source.morphology_label)
+  const morphologyDescription = englishCatalogText(source.morphology_description)
+  const objectTypeLabel = englishCatalogText(source.object_type_label)
+  const objectTypeDescription = englishCatalogText(source.object_type_description)
   return (
     <div className="catalog-classification">
-      <span title={source.morphology_description ?? undefined}>
-        <small>LoTSS 전파 형태</small>
+      <span title={morphologyDescription ?? undefined}>
+        <small>LoTSS radio morphology</small>
         <b>{source.morphology_code
-          ? `${source.morphology_code} — ${source.morphology_label ?? '설명 없음'}`
-          : '미분류'}</b>
+          ? `${source.morphology_code} — ${morphologyLabel ?? 'No description'}`
+          : 'Unclassified'}</b>
       </span>
-      <span title={source.object_type_description ?? undefined}>
-        <small>SIMBAD 물리 유형</small>
-        <b>{source.object_type_label
-          ? `${source.object_type_label}${source.object_type_code ? ` (${source.object_type_code})` : ''}`
-          : hasCounterpart ? '유형 미분류' : '—'}</b>
+      <span title={objectTypeDescription ?? undefined}>
+        <small>SIMBAD physical type</small>
+        <b>{objectTypeLabel
+          ? `${objectTypeLabel}${source.object_type_code ? ` (${source.object_type_code})` : ''}`
+          : hasCounterpart ? 'Unclassified type' : '—'}</b>
       </span>
       {hasCounterpart && source.crossmatch_separation_arcsec !== null ? (
         <em className={`catalog-match-confidence is-${source.crossmatch_confidence ?? 'caution'}`}>
-          {formatAngularDistance(source.crossmatch_separation_arcsec, 'arcsec')} 위치 후보
+          {formatAngularDistance(source.crossmatch_separation_arcsec, 'arcsec')} positional candidate
         </em>
       ) : (
         <em className="catalog-no-counterpart">
-          {enrichmentStatus === 'complete' ? 'SIMBAD 5″ 내 대응 없음' : 'SIMBAD 대응 확인 안 됨'}
+          {enrichmentStatus === 'complete' ? 'No SIMBAD match within 5″' : 'SIMBAD match not checked'}
         </em>
       )}
     </div>
@@ -706,25 +718,31 @@ function SourceTypeLegend({
 }) {
   const simbadTypes = new Map<string, { label: string; description: string | null }>()
   for (const source of sources) {
-    if (source.object_type_code && source.object_type_label && !simbadTypes.has(source.object_type_code)) {
+    const label = englishCatalogText(source.object_type_label)
+    if (source.object_type_code && label && !simbadTypes.has(source.object_type_code)) {
       simbadTypes.set(source.object_type_code, {
-        label: source.object_type_label,
-        description: source.object_type_description,
+        label,
+        description: englishCatalogText(source.object_type_description),
       })
     }
   }
-  const morphologyDefinitions = morphologyCodebook?.length ? morphologyCodebook : [
-    { code: 'S' as const, label: '단일 Gaussian', description: '' },
-    { code: 'M' as const, label: '복수 Gaussian으로 구성된 source', description: '' },
-    { code: 'C' as const, label: '다른 source와 같은 island 안의 단일 Gaussian', description: '' },
+  const rawMorphologyDefinitions = morphologyCodebook?.length ? morphologyCodebook : [
+    { code: 'S' as const, label: 'Single Gaussian', description: '' },
+    { code: 'M' as const, label: 'Source composed of multiple Gaussians', description: '' },
+    { code: 'C' as const, label: 'Single-Gaussian source in an island with other sources', description: '' },
   ]
+  const morphologyDefinitions = rawMorphologyDefinitions.map((definition) => ({
+    ...definition,
+    label: englishCatalogText(definition.label) ?? 'No English description',
+    description: englishCatalogText(definition.description) ?? '',
+  }))
   return (
     <details className="catalog-code-legend">
-      <summary>Source 유형 코드표와 위치 대응 기준</summary>
+      <summary>Classification codes and positional-matching criteria</summary>
       <div className="catalog-code-legend-grid">
         <section>
-          <h3>LoTSS 전파 형태 (S_Code)</h3>
-          <p>물리적 천체 종류가 아니라 전파 영상에서 source를 구성한 Gaussian 형태입니다.</p>
+          <h3>LoTSS radio morphology (S_Code)</h3>
+          <p>This describes how Gaussians form a source in the radio image; it is not a physical object type.</p>
           <dl>
             {morphologyDefinitions.map((definition) => (
               <div key={definition.code}>
@@ -735,8 +753,8 @@ function SourceTypeLegend({
           </dl>
         </section>
         <section>
-          <h3>SIMBAD 물리 유형</h3>
-          <p>LoTSS 좌표에서 5″ 이내의 SIMBAD 위치 후보입니다. 이름과 분류는 동일 천체임을 확정하는 판정이 아닙니다.</p>
+          <h3>SIMBAD physical type</h3>
+          <p>These are SIMBAD positional candidates within 5″ of a LoTSS position. A name or classification does not confirm that both catalog entries represent the same object.</p>
           {simbadTypes.size > 0 ? (
             <dl>
               {[...simbadTypes].map(([code, value]) => (
@@ -746,8 +764,8 @@ function SourceTypeLegend({
                 </div>
               ))}
             </dl>
-          ) : <p>현재 결과에 표시할 SIMBAD 유형 코드가 없습니다.</p>}
-          <a href="https://simbad.cds.unistra.fr/Pages/guide/otypes_desc.htx">SIMBAD 공식 유형 코드표</a>
+          ) : <p>No SIMBAD object-type codes are available in these results.</p>}
+          <a href="https://simbad.cds.unistra.fr/Pages/guide/otypes_desc.htx">Official SIMBAD object-type reference</a>
         </section>
       </div>
     </details>

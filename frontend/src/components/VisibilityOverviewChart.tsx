@@ -18,6 +18,7 @@ const PLOT_HEIGHT = HEIGHT - MARGIN.top - MARGIN.bottom
 const Y_MIN = -90
 const Y_MAX = 90
 const Y_TICKS = [-90, -60, -30, 0, 30, 60, 90]
+const MAX_TOOLTIP_TARGETS = 12
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(Math.max(value, minimum), maximum)
@@ -112,28 +113,30 @@ export function VisibilityOverviewChart({
   }
 
   if (pointCount === 0 || targets.length === 0) {
-    return <div className="chart-empty">플롯할 천체를 하나 이상 선택하세요.</div>
+    return <div className="chart-empty">Select at least one target to plot.</div>
   }
 
   const safeActiveIndex = activeIndex === null ? null : clamp(activeIndex, 0, pointCount - 1)
   const activeX = safeActiveIndex === null ? null : x(safeActiveIndex)
   const tooltipWidth = 220
   const tooltipX = activeX !== null && activeX > WIDTH - 265 ? activeX - tooltipWidth - 12 : (activeX ?? 0) + 12
-  const tooltipHeight = 45 + targets.length * 20
+  const tooltipTargets = targets.slice(0, MAX_TOOLTIP_TARGETS)
+  const omittedTooltipTargets = targets.length - tooltipTargets.length
+  const tooltipHeight = 45 + tooltipTargets.length * 20 + (omittedTooltipTargets > 0 ? 20 : 0)
   const activeSummary = safeActiveIndex === null
-    ? `${formatUtcTick(times[centerIndex], true)} UTC 중심 샘플`
+    ? `${formatUtcTick(times[centerIndex], true)} reference UTC sample`
     : `${formatUtcTick(times[safeActiveIndex], true)} UTC, ${targets
         .map((target) => {
           const altitude = commonAltitude(target, safeActiveIndex)
-          return `${target.name} 공통 고도 ${altitude?.toFixed(1) ?? '자료 없음'}도`
+          return `${target.name} minimum geometric altitude across sites ${altitude?.toFixed(1) ?? 'no data'} degrees`
         })
         .join(', ')}`
 
   return (
     <div className="overview-chart">
       <div className="overview-legends">
-        <div className="chart-legend target-color-legend" aria-label="천체 색상 범례">
-          <span className="legend-label">천체</span>
+        <div className="chart-legend target-color-legend" aria-label="Target color legend">
+          <span className="legend-label">Target</span>
           {targets.map((target, index) => (
             <span className="legend-item" key={target.id}>
               <span
@@ -145,8 +148,8 @@ export function VisibilityOverviewChart({
             </span>
           ))}
         </div>
-        <div className="chart-legend site-pattern-legend" aria-label="관측지 선 모양 범례">
-          <span className="legend-label">관측지</span>
+        <div className="chart-legend site-pattern-legend" aria-label="Observing-site line-style legend">
+          <span className="legend-label">Observing site</span>
           {targets[0]?.location_series.map((series, index) => (
             <span className="legend-item" key={series.location_id}>
               <span
@@ -159,11 +162,11 @@ export function VisibilityOverviewChart({
           ))}
           <span className="legend-item">
             <span className="legend-center-line" aria-hidden="true" />
-            중심 UTC 참조선
+            Reference UTC
           </span>
           <span className="legend-item">
             <span className="legend-threshold" aria-hidden="true" />
-            최소 고도 {minimumAltitude}°
+            Altitude threshold {minimumAltitude}°
           </span>
         </div>
       </div>
@@ -175,11 +178,14 @@ export function VisibilityOverviewChart({
           aria-labelledby={`${chartId}-title`}
           aria-describedby={`${chartId}-description`}
         >
-          <title id={`${chartId}-title`}>공통 가시 천체 전체 시간–고도 개요</title>
+          <title id={`${chartId}-title`}>Altitude–time overview of sampled simultaneously visible targets</title>
           <desc id={`${chartId}-description`}>
-            선택한 전체 시간창의 하나 이상의 계산 샘플에서 모든 선택 관측지의 고도가 동시에
-            최소 고도 {minimumAltitude}도 이상인 천체 {targets.length}개의 기하학적 고도를 비교합니다.
-            색은 천체, 선 모양은 관측지를 구분하며 세로 참조선은 중심 UTC, 붉은 점선은 최소 고도입니다.
+            Compares the geometric altitudes of {targets.length} {targets.length === 1 ? 'target' : 'targets'} that reach at least
+            {minimumAltitude} degrees at every selected observing site during one or more computed
+            samples in the selected time window. Color identifies the target, line style identifies
+            the observing site, the vertical reference marks the reference UTC, and the red dashed line
+            marks the altitude threshold. Visibility is evaluated at computed samples and does not
+            establish continuous visibility between samples.
           </desc>
           <clipPath id={`${chartId}-clip`}>
             <rect x={MARGIN.left} y={MARGIN.top} width={PLOT_WIDTH} height={PLOT_HEIGHT} />
@@ -261,10 +267,10 @@ export function VisibilityOverviewChart({
             transform={`rotate(-90 17 ${MARGIN.top + PLOT_HEIGHT / 2})`}
             className="axis-title"
           >
-            기하학적 고도
+            Geometric altitude
           </text>
           <text x={MARGIN.left + PLOT_WIDTH / 2} y={HEIGHT - 7} textAnchor="middle" className="axis-title">
-            시각 (UTC)
+            Time (UTC)
           </text>
 
           {safeActiveIndex !== null && activeX !== null && (
@@ -273,7 +279,7 @@ export function VisibilityOverviewChart({
               <text x={tooltipX + 13} y={57} className="tooltip-time">
                 {formatUtcTick(times[safeActiveIndex], true)} UTC
               </text>
-              {targets.map((target, index) => {
+              {tooltipTargets.map((target, index) => {
                 const altitude = commonAltitude(target, safeActiveIndex)
                 return (
                   <text
@@ -283,10 +289,19 @@ export function VisibilityOverviewChart({
                     fill={getTargetColor(target.id, index)}
                     className="tooltip-value"
                   >
-                    {target.name}: 공통 {altitude?.toFixed(1) ?? '—'}°
+                    {target.name}: site minimum {altitude?.toFixed(1) ?? '—'}°
                   </text>
                 )
               })}
+              {omittedTooltipTargets > 0 && (
+                <text
+                  x={tooltipX + 13}
+                  y={80 + tooltipTargets.length * 20}
+                  className="tooltip-value"
+                >
+                  +{omittedTooltipTargets} more targets · see table
+                </text>
+              )}
             </g>
           )}
 
@@ -305,14 +320,14 @@ export function VisibilityOverviewChart({
       </div>
 
       <label className="chart-scrubber">
-        <span>전체 천체 시간 샘플 탐색</span>
+        <span>Explore time samples for all targets</span>
         <input
           type="range"
           min={0}
           max={pointCount - 1}
           step={1}
           value={safeActiveIndex ?? centerIndex}
-          aria-label="전체 천체 시간 샘플 탐색"
+          aria-label="Explore time samples for all targets"
           aria-valuetext={activeSummary}
           onFocus={() => setActiveIndex((current) => current ?? centerIndex)}
           onChange={(event) => setActiveIndex(Number(event.currentTarget.value))}
@@ -321,20 +336,20 @@ export function VisibilityOverviewChart({
       </label>
 
       <p className="chart-hint">
-        색은 천체, 선 모양은 관측지를 뜻합니다. 시간 탐색 슬라이더로 공통 고도를 확인하세요.
+        Color identifies the target and line style identifies the observing site. Use the time slider to inspect the minimum geometric altitude across sites.
       </p>
 
       <details
         className="overview-data-table"
         onToggle={(event) => setIsTableOpen(event.currentTarget.open)}
       >
-        <summary>전체 수치 데이터 표</summary>
+        <summary>Full numerical data table</summary>
         {isTableOpen && <div>
           <table>
-            <caption>공통 가시 천체의 관측지별 시간–고도 데이터, UTC 기준</caption>
+            <caption>Altitude–time data in UTC by observing site for simultaneously visible targets</caption>
             <thead>
               <tr>
-                <th scope="col">UTC 시각</th>
+                <th scope="col">UTC time</th>
                 {targets.flatMap((target) =>
                   target.location_series.map((series) => (
                     <th scope="col" key={`${target.id}-${series.location_id}`}>
@@ -343,7 +358,7 @@ export function VisibilityOverviewChart({
                   )),
                 )}
                 {targets.map((target) => (
-                  <th scope="col" key={`${target.id}-common`}>{target.name} 공통 가시</th>
+                  <th scope="col" key={`${target.id}-common`}>{target.name}: all sites meet threshold</th>
                 ))}
               </tr>
             </thead>
@@ -360,7 +375,7 @@ export function VisibilityOverviewChart({
                   )}
                   {targets.map((target) => (
                     <td key={`${target.id}-common`}>
-                      {target.simultaneous_mask[timeIndex] ? '예' : '아니요'}
+                      {target.simultaneous_mask[timeIndex] ? 'Yes' : 'No'}
                     </td>
                   ))}
                 </tr>

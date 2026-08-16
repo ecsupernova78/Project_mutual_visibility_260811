@@ -27,6 +27,7 @@ interface CatalogTarget {
 type AppTab = 'visibility' | 'lofar'
 
 const MAXIMUM_TARGET_COUNT = 25
+const HANGUL_PATTERN = new RegExp('[\\u3131-\\u318e\\uac00-\\ud7a3]')
 
 const CATALOG_TARGETS: CatalogTarget[] = [
   { id: '3c123', name: '3C123', coordinate: '04h 37m · +29° 40′' },
@@ -39,21 +40,21 @@ const CATALOG_TARGETS: CatalogTarget[] = [
 const INITIAL_LOCATIONS: ObserverLocation[] = [
   {
     id: 'narrabri',
-    name: 'Narrabri',
+    name: 'Aus - Narrabri',
     latitude_deg: -30.31667,
     longitude_deg: 149.76667,
     elevation_m: 237,
   },
   {
     id: 'pyeongchang',
-    name: '평창',
+    name: 'Kor - Pyeongchang',
     latitude_deg: 37.36889,
     longitude_deg: 128.39028,
     elevation_m: 700,
   },
   {
     id: 'fushan',
-    name: 'Fushan',
+    name: 'Taiwan - Fushan',
     latitude_deg: 24.7564722222,
     longitude_deg: 121.5816388889,
     elevation_m: 0,
@@ -93,10 +94,18 @@ function formatCoordinate(value: number, type: 'ra' | 'dec') {
 
 function formatRadioFlux(value: number | null | undefined, unit: string) {
   if (value == null || !Number.isFinite(value)) return `— ${unit}`
-  return `${new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 3 }).format(value)} ${unit}`
+  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 }).format(value)} ${unit}`
+}
+
+function englishCatalogText(value: string | null | undefined) {
+  return value && !HANGUL_PATTERN.test(value) ? value : null
 }
 
 function snapshotLofarSource(source: LofarSource): CustomTargetSnapshot {
+  const morphologyLabel = englishCatalogText(source.morphology_label)
+  const morphologyDescription = englishCatalogText(source.morphology_description)
+  const objectTypeLabel = englishCatalogText(source.object_type_label)
+  const objectTypeDescription = englishCatalogText(source.object_type_description)
   const aliases = [...new Set([
     ...(source.aliases ?? []),
     ...(source.source_id === source.name ? [] : [source.source_id]),
@@ -113,13 +122,13 @@ function snapshotLofarSource(source: LofarSource): CustomTargetSnapshot {
     ...(source.total_flux_mjy === null ? {} : { total_flux_mjy: source.total_flux_mjy }),
     ...(source.peak_flux_mjy === null ? {} : { peak_flux_mjy: source.peak_flux_mjy }),
     ...(source.morphology_code == null ? {} : { morphology_code: source.morphology_code }),
-    ...(source.morphology_label == null ? {} : { morphology_label: source.morphology_label }),
-    ...(source.morphology_description == null ? {} : { morphology_description: source.morphology_description }),
+    ...(morphologyLabel == null ? {} : { morphology_label: morphologyLabel }),
+    ...(morphologyDescription == null ? {} : { morphology_description: morphologyDescription }),
     ...(source.counterpart_name == null ? {} : { counterpart_name: source.counterpart_name }),
     ...((source.counterpart_aliases?.length ?? 0) === 0 ? {} : { counterpart_aliases: source.counterpart_aliases }),
     ...(source.object_type_code == null ? {} : { object_type_code: source.object_type_code }),
-    ...(source.object_type_label == null ? {} : { object_type_label: source.object_type_label }),
-    ...(source.object_type_description == null ? {} : { object_type_description: source.object_type_description }),
+    ...(objectTypeLabel == null ? {} : { object_type_label: objectTypeLabel }),
+    ...(objectTypeDescription == null ? {} : { object_type_description: objectTypeDescription }),
     ...(source.crossmatch_separation_arcsec == null ? {} : { crossmatch_separation_arcsec: source.crossmatch_separation_arcsec }),
     ...(source.crossmatch_confidence == null ? {} : { crossmatch_confidence: source.crossmatch_confidence }),
     ...(source.crossmatch_catalog == null ? {} : { crossmatch_catalog: source.crossmatch_catalog }),
@@ -129,6 +138,7 @@ function snapshotLofarSource(source: LofarSource): CustomTargetSnapshot {
 function NumericInput({
   id,
   label,
+  ariaLabel,
   value,
   min,
   max,
@@ -141,6 +151,7 @@ function NumericInput({
 }: {
   id: string
   label: string
+  ariaLabel?: string
   value: number
   min: number
   max: number
@@ -166,6 +177,7 @@ function NumericInput({
           min={min}
           max={max}
           step={step}
+          aria-label={ariaLabel}
           aria-describedby={helpId}
           required={required}
           disabled={disabled}
@@ -191,7 +203,6 @@ function LocationEditor({
   onChange: (next: ObserverLocation) => void
 }) {
   const prefix = `location-${index}`
-  const label = String.fromCharCode(65 + index)
   return (
     <section
       className={`location-card ${selected ? 'is-selected' : 'is-unselected'}`}
@@ -202,9 +213,8 @@ function LocationEditor({
           {index + 1}
         </span>
         <div>
-          <p className="eyebrow">관측지 {label}</p>
           <label id={`${prefix}-title`} className="location-name-label">
-            <span className="sr-only">관측지 {label} 이름</span>
+            <span className="sr-only">Observation site {index + 1} name</span>
             <input
               type="text"
               value={location.name}
@@ -219,17 +229,17 @@ function LocationEditor({
           <input
             type="checkbox"
             checked={selected}
-            aria-label={`${location.name} 관측에 포함`}
+            aria-label={`Include ${location.name} in the observation`}
             onChange={onToggle}
           />
-          <span aria-hidden="true">{selected ? '포함' : '제외'}</span>
+          <span aria-hidden="true">{selected ? 'Included' : 'Excluded'}</span>
         </label>
       </div>
       <div className="coordinate-grid">
         <NumericInput
           id={`${prefix}-latitude`}
-          label="위도"
-          help="북위 + · 남위 −"
+          label="Latitude (N: + / S: −)"
+          ariaLabel={`${location.name} latitude (N: + / S: −)`}
           value={location.latitude_deg}
           min={-90}
           max={90}
@@ -241,8 +251,8 @@ function LocationEditor({
         />
         <NumericInput
           id={`${prefix}-longitude`}
-          label="경도"
-          help="동경 + · 서경 −"
+          label="Longitude (E: + / W: −)"
+          ariaLabel={`${location.name} longitude (E: + / W: −)`}
           value={location.longitude_deg}
           min={-180}
           max={180}
@@ -254,7 +264,8 @@ function LocationEditor({
         />
         <NumericInput
           id={`${prefix}-elevation`}
-          label="해발고도"
+          label="Elevation"
+          ariaLabel={`${location.name} elevation`}
           value={location.elevation_m}
           min={-500}
           max={10000}
@@ -266,7 +277,7 @@ function LocationEditor({
         />
       </div>
       {location.id === 'fushan' && (
-        <p className="location-note">제공된 좌표 적용 · 해발고도 미지정으로 기본 0 m</p>
+        <p className="location-note">Provided coordinates applied · Elevation defaults to 0 m because no value was specified</p>
       )}
     </section>
   )
@@ -278,14 +289,14 @@ function ResultSkeleton() {
       <span className="loader-orbit" aria-hidden="true">
         <span />
       </span>
-      <h2>선택한 하늘을 겹쳐 보는 중</h2>
-      <p>각 관측지의 좌표를 변환하고 공통 가시 샘플을 계산하고 있습니다.</p>
+      <h2>Overlaying the selected skies</h2>
+      <p>Transforming each site's coordinates and calculating shared visibility samples.</p>
       <div className="skeleton-chart" aria-hidden="true">
         <i />
         <i />
         <i />
       </div>
-      <span className="sr-only">가시성 계산 중</span>
+      <span className="sr-only">Calculating visibility</span>
     </div>
   )
 }
@@ -298,19 +309,7 @@ function IntroState() {
         <span className="orbit orbit-two" />
         <span className="orbit-core" />
       </div>
-      <p className="eyebrow">첫 번째 관측 계획</p>
-      <h2>원하는 관측지를 골라<br />하나의 공통 하늘로</h2>
-      <p>
-        한 곳부터 세 곳까지 선택하면, 선택한 모든 관측지에서 동시에 최소 고도 이상인
-        천체를 시간축에서 비교합니다.
-      </p>
-      <div className="intro-key">
-        <span><b>A</b> Narrabri</span>
-        <i aria-hidden="true" />
-        <span><b>B</b> 평창</span>
-        <i aria-hidden="true" />
-        <span><b>C</b> Fushan</span>
-      </div>
+      <h2>Simultaneously Visible Target Search</h2>
     </div>
   )
 }
@@ -319,11 +318,11 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return (
     <div className="result-state error-state" role="alert">
       <span className="state-symbol" aria-hidden="true">!</span>
-      <p className="eyebrow">계산을 완료하지 못했습니다</p>
-      <h2>연결 또는 입력을 확인해 주세요</h2>
+      <p className="eyebrow">Calculation could not be completed</p>
+      <h2>Check the connection and input values</h2>
       <p>{message}</p>
       <button className="secondary-button" type="button" onClick={onRetry}>
-        다시 계산
+        Try Again
       </button>
     </div>
   )
@@ -339,11 +338,12 @@ function EmptyState({
   return (
     <div className="result-state empty-state" role="status">
       <span className="state-symbol" aria-hidden="true">0</span>
-      <p className="eyebrow">동시 가시 천체 0개</p>
-      <h2>이 시간창에는 공통 천체가 없습니다</h2>
+      <p className="eyebrow">0 simultaneously visible targets</p>
+      <h2>No targets are shared within this time window</h2>
       <p>
-        선택한 천체 중 {locationCount}개 관측지 모두에서 {minimumAltitude}° 이상인 샘플이 없습니다.
-        시간 범위를 넓히거나 최소 고도를 낮춰 보세요.
+        None of the selected targets has a sample at or above {minimumAltitude}° at every selected site
+        ({locationCount} {locationCount === 1 ? 'site' : 'sites'} selected).
+        Try widening the time range or lowering the minimum altitude.
       </p>
     </div>
   )
@@ -371,7 +371,7 @@ function TargetResultCard({
   const durationLabel = longestVisibility?.label ?? '—'
   const durationQualifier = longestVisibility
     ? [
-        longestVisibility.label === '단일 샘플' ? '지속시간 미확정' : null,
+        longestVisibility.label === 'Single sample' ? 'Duration undetermined' : null,
         longestVisibility.boundaryLabel,
       ].filter(Boolean).join(' · ')
     : null
@@ -385,22 +385,22 @@ function TargetResultCard({
     >
       <span className="target-result-topline">
         <span className="visibility-dot" aria-hidden="true" />
-        동시 관측 가능
+        Simultaneously visible
       </span>
       <strong>{target.name}</strong>
       <span className="target-card-meta">
-        {target.visible_intervals.length}개 샘플 묶음
+        {target.visible_intervals.length} sample group{target.visible_intervals.length === 1 ? '' : 's'}
         <i aria-hidden="true" />
-        최고 공통 고도 {target.max_common_altitude_deg?.toFixed(1) ?? '—'}°
+        Maximum common altitude {target.max_common_altitude_deg?.toFixed(1) ?? '—'}°
       </span>
       <span
         className="target-duration-metric"
         title={VISIBILITY_DURATION_NOTE}
         aria-describedby="target-duration-note"
       >
-        <span>시간창 내 최장 공통 가시 구간</span>
+        <span>Longest common visibility within window</span>
         <strong>{durationLabel}</strong>
-        <small>샘플 기준{durationQualifier ? ` · ${durationQualifier}` : ''}</small>
+        <small>Sample-based{durationQualifier ? ` · ${durationQualifier}` : ''}</small>
       </span>
       {alias && <span className="target-alias">{alias}</span>}
     </button>
@@ -450,7 +450,7 @@ function Results({
   const durationLabel = longestVisibility?.label ?? '—'
   const durationQualifier = longestVisibility
     ? [
-        longestVisibility.label === '단일 샘플' ? '지속시간 미확정' : null,
+        longestVisibility.label === 'Single sample' ? 'Duration undetermined' : null,
         longestVisibility.boundaryLabel,
       ].filter(Boolean).join(' · ')
     : null
@@ -459,10 +459,10 @@ function Results({
     <div className="results-content">
       <header className="results-header">
         <div>
-          <p className="eyebrow">계산 결과 · 샘플 기준</p>
+          <p className="eyebrow">Calculation Results · Sample-based</p>
           <h2>
-            동시 관측 가능 <span>{visibleTargets.length}</span>
-            <small>/ {response.targets.length}개</small>
+            Simultaneously visible <span>{visibleTargets.length}</span>
+            <small>/ {response.targets.length}</small>
           </h2>
         </div>
         <div className="result-window">
@@ -471,11 +471,11 @@ function Results({
           <span>{formatUtcDateTime(response.times_utc.at(-1) ?? '')}</span>
         </div>
         <a className="overview-jump" href="#common-visibility-overview">
-          전체 개요로 이동 <span aria-hidden="true">↓</span>
+          Jump to Overview <span aria-hidden="true">↓</span>
         </a>
       </header>
 
-      <div className="target-results" role="tablist" aria-label="동시 가시 천체 선택">
+      <div className="target-results" role="tablist" aria-label="Select a simultaneously visible target">
         {visibleTargets.map((candidate) => (
           <TargetResultCard
             key={candidate.id}
@@ -488,15 +488,15 @@ function Results({
         ))}
       </div>
       <p id="target-duration-note" className="target-duration-note">
-        샘플 기준: 관측 가능 시간은 연속 계산 샘플의 첫·마지막 시각 사이 경과 길이입니다.
-        샘플 사이 모든 순간의 연속 가시성을 보장하지 않습니다.
+        Sample-based: observable time is the elapsed duration between the first and last samples in a consecutive group.
+        It does not guarantee uninterrupted visibility between samples.
       </p>
 
-      <section className="chart-panel" role="tabpanel" aria-label={`${target.name} 고도 그래프`}>
+      <section className="chart-panel" role="tabpanel" aria-label={`${target.name} altitude chart`}>
         <header className="chart-heading">
           <div>
             <span className="object-type">
-              {target.catalog === 'lofar_dr3' ? 'LoTSS DR3 SOURCE · 144 MHz' : 'ICRS 고정 천체'}
+              {target.catalog === 'lofar_dr3' ? 'LoTSS DR3 SOURCE · 144 MHz' : 'FIXED ICRS TARGET'}
             </span>
             <h3>{target.name}</h3>
             {target.aliases.length > 0 && (
@@ -507,33 +507,33 @@ function Results({
                 <p className="catalog-source-meta">
                   LoTSS ID {target.catalog_source_id}
                   <span aria-hidden="true"> · </span>
-                  총 플럭스 {formatRadioFlux(target.total_flux_mjy, 'mJy')}
+                  Total flux {formatRadioFlux(target.total_flux_mjy, 'mJy')}
                   <span aria-hidden="true"> · </span>
-                  피크 플럭스 {formatRadioFlux(target.peak_flux_mjy, 'mJy/beam')}
+                  Peak flux {formatRadioFlux(target.peak_flux_mjy, 'mJy/beam')}
                 </p>
                 <p className="catalog-source-meta">
-                  LoTSS 전파 형태 {target.morphology_code
-                    ? `${target.morphology_code} — ${target.morphology_label ?? '설명 없음'}`
-                    : '미분류'}
+                  LoTSS radio morphology {target.morphology_code
+                    ? `${target.morphology_code} — ${target.morphology_label ?? 'No description'}`
+                    : 'Unclassified'}
                   <span aria-hidden="true"> · </span>
-                  SIMBAD 물리 유형 {target.object_type_label
+                  SIMBAD physical type {target.object_type_label
                     ? `${target.object_type_label}${target.object_type_code ? ` (${target.object_type_code})` : ''}`
-                    : '없음 또는 미확인'}
+                    : 'None or unconfirmed'}
                 </p>
               </div>
             )}
           </div>
           <dl className="object-coordinates">
             <div>
-              <dt>적경</dt>
+              <dt>Right Ascension</dt>
               <dd>{formatCoordinate(target.ra_deg, 'ra')}</dd>
             </div>
             <div>
-              <dt>적위</dt>
+              <dt>Declination</dt>
               <dd>{formatCoordinate(target.dec_deg, 'dec')}</dd>
             </div>
             <div>
-              <dt>최고 공통 고도</dt>
+              <dt>Maximum Common Altitude</dt>
               <dd>{target.max_common_altitude_deg?.toFixed(1) ?? '—'}°</dd>
             </div>
             <div
@@ -541,11 +541,11 @@ function Results({
               title={VISIBILITY_DURATION_NOTE}
               aria-describedby="duration-method-note"
             >
-              <dt>시간창 내 최장 공통 가시 구간</dt>
+              <dt>Longest Common Visibility Within Window</dt>
               <dd>
                 {durationLabel}
                 <small>
-                  샘플 기준{durationQualifier ? ` · ${durationQualifier}` : ''}
+                  Sample-based{durationQualifier ? ` · ${durationQualifier}` : ''}
                 </small>
               </dd>
             </div>
@@ -562,11 +562,9 @@ function Results({
         <div id="duration-method-note" className="science-note">
           <span aria-hidden="true">i</span>
           <p>
-            <strong>판정 기준</strong> 선택한 {target.location_series.length}개 관측지의 기하학적 고도가 모두 {minimumAltitude}° 이상인
-            샘플과 연속 샘플 묶음을 강조합니다. 시간창 내 최장 구간은 가장 긴 묶음의 첫·마지막 샘플
-            사이 경과 길이이며, 단일 가시 샘플은 지속시간 미확정으로 표시합니다. 샘플 사이 모든
-            순간의 연속 가시성을 보장하지 않으며, 대기 굴절(pressure=0), 지형, 날씨와 일광은
-            반영하지 않습니다.
+            <strong>Visibility Criteria</strong> Samples and consecutive sample groups are highlighted when every selected site has a geometric altitude of at least {minimumAltitude}° ({target.location_series.length} {target.location_series.length === 1 ? 'site' : 'sites'} selected).
+            The longest interval is the elapsed time between the first and last samples in the longest group. A single visible sample has an undetermined duration.
+            This does not guarantee uninterrupted visibility between samples. Atmospheric refraction (pressure=0), terrain, weather, and daylight are not included.
           </p>
         </div>
       </section>
@@ -579,22 +577,21 @@ function Results({
         <header className="chart-heading overview-heading">
           <div>
             <span className="object-type">TARGETS VISIBLE WITHIN THE TIME WINDOW</span>
-            <h3 id="overview-title">시간창 공통 가시 천체 전체 개요</h3>
+            <h3 id="overview-title">Overview of Targets Visible Within the Time Window</h3>
             <p>
-              선택한 카탈로그 천체 중, 전체 시간창의 하나 이상의 계산 샘플에서 모든 선택
-              관측지의 고도가 동시에 {minimumAltitude}° 이상인 천체를 골라 전체 시간–고도 궤적을
-              비교합니다.
+              Compare full altitude–time tracks for selected catalog targets that reach at least {minimumAltitude}°
+              at every selected site in one or more samples within the full time window.
             </p>
           </div>
           <span className="overview-count" aria-live="polite">
-            {plottedTargets.length} / {visibleTargets.length}개 표시
+            {plottedTargets.length} / {visibleTargets.length} plotted
           </span>
         </header>
 
         <fieldset className="overview-target-selector">
-          <legend>개요 그래프에 표시할 천체</legend>
+          <legend>Targets to Plot in the Overview</legend>
           <div className="overview-selector-actions">
-            <span>관측 가능 시간대가 존재하는 천체만 선택할 수 있습니다.</span>
+            <span>Only targets with an observable interval can be selected.</span>
             <div>
               <button
                 type="button"
@@ -603,14 +600,14 @@ function Results({
                 )}
                 disabled={plottedTargets.length === visibleTargets.length}
               >
-                관측 가능 천체 모두 표시
+                Show All Visible Targets
               </button>
               <button
                 type="button"
                 onClick={() => onOverviewSelectionChange(new Set())}
                 disabled={plottedTargets.length === 0}
               >
-                모두 숨기기
+                Hide All
               </button>
             </div>
           </div>
@@ -632,14 +629,14 @@ function Results({
                   <input
                     type="checkbox"
                     checked={overviewTargetIds.has(candidate.id)}
-                    aria-label={`개요 그래프에 ${candidate.name} 표시`}
+                    aria-label={`Plot ${candidate.name} in the overview`}
                     onChange={() => toggleOverviewTarget(candidate.id)}
                   />
                   <span className="overview-option-check" aria-hidden="true">✓</span>
                   <span className="overview-option-dot" aria-hidden="true" />
                   <span>
                     <strong>{candidate.name}</strong>
-                    <small>최장 공통 가시 {longest?.label ?? '—'}</small>
+                    <small>Longest common visibility {longest?.label ?? '—'}</small>
                   </span>
                 </label>
               )
@@ -657,10 +654,9 @@ function Results({
         <div className="science-note">
           <span aria-hidden="true">i</span>
           <p>
-            <strong>읽는 법</strong> 선택 목록의 천체는 계산 시간창 안의 하나 이상의 계산 샘플에서
-            선택한 모든 관측지의 고도가 동시에 {minimumAltitude}° 이상입니다. 그중 체크한 천체만
-            그래프·범례·수치 표에 표시합니다. 시간창의 모든 시각에 관측 가능하다는 뜻은 아니며,
-            세로 참조선은 입력한 중심 UTC에 가장 가까운 샘플입니다.
+            <strong>How to Read This</strong> Listed targets reach at least {minimumAltitude}° at every selected site in one or more samples within the calculation window.
+            Only checked targets appear in the chart, legend, and data table. This does not mean they are visible throughout the entire window.
+            The vertical reference line marks the sample nearest the entered central UTC time.
           </p>
         </div>
       </section>
@@ -812,7 +808,7 @@ export default function App() {
       Math.floor((hoursAfter * 60) / stepMinutes) +
       1
     if (sampleCount < 2) {
-      setError('현재 시간 범위와 계산 간격으로는 샘플이 1개뿐입니다. 최소 2개가 되도록 조정해 주세요.')
+      setError('This time range and calculation interval produce only one sample. Adjust them to produce at least two samples.')
       setStatus('error')
       return
     }
@@ -852,7 +848,7 @@ export default function App() {
       setStatus('success')
     } catch (caught) {
       if (controller.signal.aborted) return
-      setError(caught instanceof Error ? caught.message : '알 수 없는 오류가 발생했습니다.')
+      setError(caught instanceof Error ? caught.message : 'An unknown error occurred.')
       setStatus('error')
     }
   }
@@ -860,15 +856,15 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#visibility-panel" aria-label="공통하늘 홈" onClick={() => setActiveTab('visibility')}>
+        <a className="brand" href="#visibility-panel" aria-label="Mutual Sky home" onClick={() => setActiveTab('visibility')}>
           <span className="brand-mark" aria-hidden="true"><i /></span>
-          <span><b>공통하늘</b><small>Mutual Sky</small></span>
+          <span><b>Mutual Sky</b><small>Shared Visibility</small></span>
         </a>
-        <p className="topbar-description">선택한 관측지의 천체 가시성 비교</p>
-        <span className="utc-badge"><i aria-hidden="true" />모든 시각은 UTC</span>
+        <p className="topbar-description">Compare target visibility across selected sites</p>
+        <span className="utc-badge"><i aria-hidden="true" />All times are UTC</span>
       </header>
 
-      <nav className="app-tabs" role="tablist" aria-label="주요 기능">
+      <nav className="app-tabs" role="tablist" aria-label="Primary navigation">
         <button
           id="visibility-tab"
           type="button"
@@ -877,7 +873,7 @@ export default function App() {
           aria-controls="visibility-panel"
           onClick={() => setActiveTab('visibility')}
         >
-          관측 가시성
+          Observation Visibility
         </button>
         <button
           id="lofar-catalog-tab"
@@ -887,7 +883,7 @@ export default function App() {
           aria-controls="lofar-catalog-panel"
           onClick={() => setActiveTab('lofar')}
         >
-          LOFAR DR3 카탈로그
+          LOFAR DR3 Catalog
           {selectedImportedTargetIds.size > 0 && <span>{selectedImportedTargetIds.size}</span>}
         </button>
       </nav>
@@ -902,15 +898,13 @@ export default function App() {
         <aside className="control-panel" aria-labelledby="conditions-title">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">Observation setup</p>
-              <h1 id="conditions-title">관측 조건</h1>
+              <h1 id="conditions-title">Observation Setup</h1>
             </div>
-            <span className="step-chip">01</span>
           </div>
 
           <form onSubmit={handleSubmit} aria-busy={status === 'loading'}>
             <fieldset disabled={status === 'loading'}>
-              <legend className="section-legend"><span>01</span>관측 위치</legend>
+              <legend className="section-legend"><span>01</span>Observation Sites</legend>
               <div className="locations-stack">
                 {locations.map((location, index) => (
                   <LocationEditor
@@ -924,24 +918,20 @@ export default function App() {
                 ))}
               </div>
               {locationSelectionError && (
-                <p className="field-error" role="alert">관측지를 하나 이상 선택해 주세요.</p>
+                <p className="field-error" role="alert">Select at least one observation site.</p>
               )}
             </fieldset>
 
             <fieldset disabled={status === 'loading'}>
-              <legend className="section-legend"><span>02</span>시간과 판정</legend>
+              <legend className="section-legend"><span>02</span>Reference Time UTC</legend>
               <div className="time-grid">
                 <label className="field datetime-field" htmlFor="center-time">
-                  <span className="field-label">
-                    기준 시각 <strong>UTC</strong>
-                    <small id="center-time-help">현지 시각이 아닌 협정세계시</small>
-                  </span>
+                  <span className="sr-only">Reference Time UTC</span>
                   <span className="input-shell">
                     <input
                       id="center-time"
                       type="datetime-local"
                       value={centerTime}
-                      aria-describedby="center-time-help"
                       required
                       onChange={(event) => {
                         invalidateResults()
@@ -953,12 +943,12 @@ export default function App() {
                 </label>
                 <NumericInput
                   id="hours-before"
-                  label="이전"
+                  label="Before"
                   value={hoursBefore}
                   min={0.25}
                   max={72}
                   step={0.25}
-                  suffix="시간"
+                  suffix="hr"
                   onChange={(value) => {
                     invalidateResults()
                     setHoursBefore(value)
@@ -966,12 +956,12 @@ export default function App() {
                 />
                 <NumericInput
                   id="hours-after"
-                  label="이후"
+                  label="After"
                   value={hoursAfter}
                   min={0.25}
                   max={72}
                   step={0.25}
-                  suffix="시간"
+                  suffix="hr"
                   onChange={(value) => {
                     invalidateResults()
                     setHoursAfter(value)
@@ -979,12 +969,12 @@ export default function App() {
                 />
                 <NumericInput
                   id="step-minutes"
-                  label="계산 간격"
+                  label="Calculation Interval"
                   value={stepMinutes}
                   min={1}
                   max={180}
                   step={1}
-                  suffix="분"
+                  suffix="min"
                   onChange={(value) => {
                     invalidateResults()
                     setStepMinutes(value)
@@ -992,7 +982,7 @@ export default function App() {
                 />
                 <NumericInput
                   id="minimum-altitude"
-                  label="최소 고도"
+                  label="Minimum Altitude"
                   value={minimumAltitude}
                   min={-90}
                   max={90}
@@ -1007,9 +997,9 @@ export default function App() {
             </fieldset>
 
             <fieldset disabled={status === 'loading'}>
-              <legend className="section-legend"><span>03</span>천체 카탈로그</legend>
+              <legend className="section-legend"><span>03</span>Target Selection</legend>
               <div className="target-heading-row">
-                <p>기본 3C 전파원 · 전체 {selectedTargetIds.size + selectedImportedTargetIds.size}/{MAXIMUM_TARGET_COUNT}개</p>
+                <p>Examples of 5 Radio sources · {selectedTargetIds.size}/{CATALOG_TARGETS.length} selected</p>
                 <button
                   type="button"
                   className="text-button"
@@ -1031,10 +1021,10 @@ export default function App() {
                     }
                   }}
                 >
-                  {selectedTargetIds.size === CATALOG_TARGETS.length ? '전체 해제' : '전체 선택'}
+                  {selectedTargetIds.size === CATALOG_TARGETS.length ? 'Deselect All' : 'Select All'}
                 </button>
               </div>
-              <ul className="target-checks" aria-label="기본 3C 전파원">
+              <ul className="target-checks" aria-label="Examples of 5 Radio sources">
                 {CATALOG_TARGETS.map((target) => (
                   <li key={target.id}>
                     <label className="target-check">
@@ -1058,15 +1048,15 @@ export default function App() {
               </ul>
               <div className="imported-targets-heading">
                 <p>
-                  LOFAR DR3에서 가져온 천체
-                  <strong>선택 {selectedImportedTargetIds.size} / 불러옴 {importedTargets.size}</strong>
+                  Targets Imported from LOFAR DR3
+                  <strong>{selectedImportedTargetIds.size} Selected / {importedTargets.size} Imported</strong>
                 </p>
                 <button type="button" className="text-button" onClick={() => setActiveTab('lofar')}>
-                  카탈로그 검색
+                  Search Catalog
                 </button>
               </div>
               {importedTargets.size > 0 ? (
-                <div className="imported-target-list" aria-label="가져온 LOFAR DR3 천체 목록">
+                <div className="imported-target-list" aria-label="Imported LOFAR DR3 target list">
                   {[...importedTargets.values()].map((target) => (
                     <article
                       key={target.id}
@@ -1080,7 +1070,7 @@ export default function App() {
                             !selectedImportedTargetIds.has(target.id)
                             && selectedTargetIds.size + selectedImportedTargetIds.size >= MAXIMUM_TARGET_COUNT
                           }
-                          aria-label={`${target.name} ${selectedImportedTargetIds.has(target.id) ? '계산 대상에서 해제' : '계산 대상으로 선택'}`}
+                          aria-label={`${selectedImportedTargetIds.has(target.id) ? 'Exclude' : 'Include'} ${target.name} ${selectedImportedTargetIds.has(target.id) ? 'from' : 'in'} the calculation`}
                           onChange={() => toggleImportedTarget(target.id)}
                         />
                         <span aria-hidden="true">✓</span>
@@ -1089,47 +1079,47 @@ export default function App() {
                         <b>{target.name}</b>
                         <small>{target.catalog_source_id} · {target.ra_deg.toFixed(4)}°, {target.dec_deg.toFixed(4)}°</small>
                         <small>
-                          LoTSS 형태 {target.morphology_code
-                            ? `${target.morphology_code} — ${target.morphology_label ?? '설명 없음'}`
-                            : '미분류'}
-                          {' · '}SIMBAD 유형 {target.object_type_label
+                          LoTSS morphology {target.morphology_code
+                            ? `${target.morphology_code} — ${target.morphology_label ?? 'No description'}`
+                            : 'Unclassified'}
+                          {' · '}SIMBAD type {target.object_type_label
                             ? `${target.object_type_label}${target.object_type_code ? ` (${target.object_type_code})` : ''}`
-                            : '없음 또는 미확인'}
+                            : 'None or unconfirmed'}
                         </small>
                       </span>
                       <button
                         type="button"
-                        aria-label={`${target.name} 가져온 목록에서 삭제`}
+                        aria-label={`Remove ${target.name} from the imported list`}
                         onClick={() => removeImportedTarget(target.id)}
                       >
-                        목록 삭제
+                        Remove
                       </button>
                     </article>
                   ))}
                 </div>
               ) : (
-                <p className="imported-target-empty">LOFAR DR3 탭에서 검색한 천체를 계산 대상으로 추가할 수 있습니다.</p>
+                <p className="imported-target-empty">Search the LOFAR DR3 tab to add targets to the calculation.</p>
               )}
               {selectionError && (
-                <p className="field-error" role="alert">계산할 천체를 하나 이상 선택해 주세요.</p>
+                <p className="field-error" role="alert">Select at least one target to calculate.</p>
               )}
             </fieldset>
 
             <button className="calculate-button" type="submit" disabled={status === 'loading'}>
               {status === 'loading' ? (
-                <><span className="button-spinner" aria-hidden="true" />계산 중…</>
+                <><span className="button-spinner" aria-hidden="true" />Calculating…</>
               ) : (
-                <><span aria-hidden="true">✦</span>공통 가시성 계산</>
+                <><span aria-hidden="true">✦</span>Plot Altitude-Time</>
               )}
             </button>
           </form>
         </aside>
 
-        <section className="result-panel" aria-label="가시성 계산 결과">
+        <section className="result-panel" aria-label="Visibility calculation results">
           {status === 'idle' && <IntroState />}
           {status === 'loading' && <ResultSkeleton />}
           {status === 'error' && (
-            <ErrorState message={error ?? '오류가 발생했습니다.'} onRetry={() => void handleSubmit()} />
+            <ErrorState message={error ?? 'An error occurred.'} onRetry={() => void handleSubmit()} />
           )}
           {status === 'success' && response && (
             <Results
@@ -1154,7 +1144,7 @@ export default function App() {
       />
 
       <footer className="footer-note">
-        기준 좌표계 ICRS · 고도 좌표계 AltAz · 계산 결과는 관측 계획 참고용입니다.
+        Reference frame: ICRS · Altitude frame: AltAz · Results are intended for observation-planning reference.
       </footer>
     </div>
   )

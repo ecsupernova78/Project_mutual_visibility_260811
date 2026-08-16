@@ -107,7 +107,7 @@ export function AltitudeChart({
   if (pointCount === 0 || target.location_series.length === 0) {
     return (
       <div className="chart-empty" role="status">
-        그래프로 표시할 고도 데이터가 없습니다.
+        No altitude data are available to plot.
       </div>
     )
   }
@@ -119,7 +119,7 @@ export function AltitudeChart({
 
   return (
     <div className="altitude-chart">
-      <div className="chart-legend" aria-label="그래프 범례">
+      <div className="chart-legend" aria-label="Chart legend">
         {target.location_series.map((series, index) => (
           <span className="legend-item" key={series.location_id}>
             <span
@@ -133,11 +133,11 @@ export function AltitudeChart({
         ))}
         <span className="legend-item">
           <span className="legend-threshold" aria-hidden="true" />
-          최소 고도 {minimumAltitude}°
+          Altitude threshold {minimumAltitude}°
         </span>
         <span className="legend-item">
           <span className="legend-window" aria-hidden="true" />
-          동시 가시 샘플 구간
+          Samples meeting the simultaneous-visibility threshold
         </span>
       </div>
 
@@ -147,10 +147,10 @@ export function AltitudeChart({
           role="img"
           aria-labelledby={`${patternId}-title ${patternId}-description`}
         >
-          <title id={`${patternId}-title`}>{target.name} 시간–고도 그래프</title>
+          <title id={`${patternId}-title`}>{target.name} altitude–time chart</title>
           <desc id={`${patternId}-description`}>
-            UTC 시각에 따른 {target.location_series.length}개 관측지의 기하학적 고도와 최소 고도 {minimumAltitude}도를
-            비교합니다. 음수 고도는 지평선 아래를 뜻합니다.
+            Compares geometric altitude at {target.location_series.length} observing {target.location_series.length === 1 ? 'site' : 'sites'} over UTC
+            against an altitude threshold of {minimumAltitude} degrees. Negative altitudes are below the horizon.
           </desc>
           <defs>
             <pattern id={patternId} width="8" height="8" patternUnits="userSpaceOnUse">
@@ -256,7 +256,7 @@ export function AltitudeChart({
             transform={`rotate(-90 17 ${MARGIN.top + PLOT_HEIGHT / 2})`}
             className="axis-title"
           >
-            기하학적 고도
+            Geometric altitude
           </text>
           <text
             x={MARGIN.left + PLOT_WIDTH / 2}
@@ -264,7 +264,7 @@ export function AltitudeChart({
             textAnchor="middle"
             className="axis-title"
           >
-            시각 (UTC)
+            Time (UTC)
           </text>
 
           {tooltipVisible && safeActiveIndex !== null && activeX !== null && (
@@ -322,14 +322,14 @@ export function AltitudeChart({
       </div>
 
       <label className="chart-scrubber">
-        <span>시간 샘플 탐색</span>
+        <span>Explore time samples</span>
         <input
           type="range"
           min={0}
           max={pointCount - 1}
           step={1}
           value={safeActiveIndex ?? 0}
-          aria-label="시간 샘플 탐색"
+          aria-label="Explore time samples"
           aria-valuetext={`${formatUtcTick(times[safeActiveIndex ?? 0], true)} UTC`}
           onFocus={() => setActiveIndex((current) => current ?? 0)}
           onChange={(event) => setActiveIndex(Number(event.currentTarget.value))}
@@ -337,17 +337,17 @@ export function AltitudeChart({
         <output>{formatUtcTick(times[safeActiveIndex ?? 0], true)} UTC</output>
       </label>
 
-      <p className="chart-hint">그래프를 가리키거나 시간 탐색 슬라이더로 샘플 값을 확인하세요.</p>
+      <p className="chart-hint">Point at the chart or use the time slider to inspect sample values.</p>
 
       <table className="sr-only">
-        <caption>{target.name} 시간별 고도 데이터, UTC 기준</caption>
+        <caption>{target.name} altitude data by time in UTC</caption>
         <thead>
           <tr>
-            <th>UTC 시각</th>
+            <th>UTC time</th>
             {target.location_series.map((series) => (
-              <th key={series.location_id}>{series.location_name} 고도</th>
+              <th key={series.location_id}>{series.location_name} altitude</th>
             ))}
-            <th>동시 가시 샘플</th>
+            <th>All sites meet threshold</th>
           </tr>
         </thead>
         <tbody>
@@ -355,9 +355,9 @@ export function AltitudeChart({
             <tr key={time}>
               <td>{time}</td>
               {target.location_series.map((series) => (
-                <td key={series.location_id}>{series.altitudes_deg[index]}도</td>
+                <td key={series.location_id}>{series.altitudes_deg[index]}°</td>
               ))}
-              <td>{target.simultaneous_mask[index] ? '예' : '아니요'}</td>
+              <td>{target.simultaneous_mask[index] ? 'Yes' : 'No'}</td>
             </tr>
           ))}
         </tbody>

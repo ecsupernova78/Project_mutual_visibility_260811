@@ -121,7 +121,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-vis
 .panel-heading, .results-header, .chart-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .eyebrow { margin: 0 0 4px; color: var(--green); font: 500 10px/1.4 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
 .panel-heading h1 { margin: 0; font-size: 24px; letter-spacing: -.04em; }
-.step-chip { width: 37px; height: 37px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--line-strong); color: var(--subtle); font: 11px var(--mono); }
 
 form { margin-top: 17px; }
 fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -148,7 +147,8 @@ fieldset:disabled { opacity: .68; }
 .location-toggle span { min-width: 42px; height: 24px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 999px; color: var(--subtle); background: rgba(4, 13, 24, .7); font: 8px var(--mono); transition: .2s; }
 .location-toggle input:checked + span { border-color: rgba(125, 225, 202, .42); color: var(--green); background: rgba(125, 225, 202, .08); }
 .location-toggle input:focus-visible + span { outline: 2px solid var(--cyan); outline-offset: 2px; }
-.coordinate-grid { display: grid; grid-template-columns: 1fr 1fr .74fr; gap: 7px; }
+.coordinate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.coordinate-grid .field:last-child { grid-column: 1 / -1; }
 .location-note { margin: 8px 0 0; color: #728a9d; font: 7.5px/1.4 var(--mono); }
 .field { min-width: 0; display: grid; gap: 6px; }
 .field-label { color: #9eb0bf; font-size: 10px; line-height: 1.15; }
@@ -489,7 +489,6 @@ fieldset:disabled { opacity: .68; }
   .workspace { grid-template-columns: 1fr; }
   .control-panel { position: static; }
   .result-panel { height: auto; min-height: 590px; overflow: visible; }
-  .coordinate-grid { grid-template-columns: 1fr 1fr 1fr; }
   .intro-key { flex-wrap: wrap; justify-content: center; }
   .catalog-hero { align-items: flex-start; }
 }
@@ -499,8 +498,6 @@ fieldset:disabled { opacity: .68; }
   .utc-badge { font-size: 0; padding: 8px; }
   .workspace { padding: 12px; gap: 12px; }
   .control-panel, .results-content { padding: 16px; }
-  .coordinate-grid { grid-template-columns: 1fr 1fr; }
-  .coordinate-grid .field:last-child { grid-column: 1 / -1; }
   .target-check > span:last-child { min-height: 48px; }
   .results-header { align-items: flex-start; }
   .results-header h2 { font-size: 19px; }

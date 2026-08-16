@@ -1,7 +1,7 @@
 import type { VisibleInterval } from './types'
 
 export const VISIBILITY_DURATION_NOTE =
-  '연속 계산 샘플의 첫 시각과 마지막 시각 사이 경과 시간입니다. 샘플 사이 모든 순간과 시간창 밖의 가시성을 보장하지 않습니다.'
+  'Elapsed time between the first and last timestamps of consecutive computed samples. It does not guarantee visibility at every instant between samples or outside the calculation window.'
 
 export interface LongestCommonVisibility {
   interval: VisibleInterval
@@ -17,19 +17,19 @@ export function getVisibilityWindowBoundaryLabel(
   const touchesStart = interval.start_index === 0
   const touchesEnd = interval.end_index === sampleCount - 1
 
-  if (touchesStart || touchesEnd) return '창 경계 도달 · 창 밖은 미계산'
+  if (touchesStart || touchesEnd) return 'Reaches window boundary · outside window not calculated'
   return null
 }
 
-export function formatKoreanDuration(totalMinutes: number) {
+export function formatDuration(totalMinutes: number) {
   const safeMinutes = Math.max(0, totalMinutes)
   const hours = Math.floor(safeMinutes / 60)
   const minutes = safeMinutes - hours * 60
   const minuteLabel = Number.isInteger(minutes) ? String(minutes) : minutes.toFixed(1)
 
-  if (hours === 0) return `${minuteLabel}분`
-  if (minutes === 0) return `${hours}시간`
-  return `${hours}시간 ${minuteLabel}분`
+  if (hours === 0) return `${minuteLabel} min`
+  if (minutes === 0) return `${hours} hr`
+  return `${hours} hr ${minuteLabel} min`
 }
 
 export function getLongestCommonVisibility(
@@ -71,7 +71,7 @@ export function getLongestCommonVisibility(
   return {
     interval: longestInterval,
     elapsedMinutes: longestMinutes,
-    label: isSingleSample ? '단일 샘플' : formatKoreanDuration(longestMinutes),
+    label: isSingleSample ? 'Single sample' : formatDuration(longestMinutes),
     boundaryLabel,
   }
 }

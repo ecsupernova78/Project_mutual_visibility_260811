@@ -10,6 +10,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '') ?? '
 const ENDPOINT = `${API_BASE_URL}/api/v1/visibility/altitude-series`
 const LOFAR_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/lotss-dr3/sources`
 const LOFAR_CONE_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/lotss-dr3/cone`
+const HANGUL_PATTERN = new RegExp('[\\u3131-\\u318e\\uac00-\\ud7a3]')
+
+function englishErrorDetail(detail: unknown) {
+  return typeof detail === 'string' && !HANGUL_PATTERN.test(detail) ? detail : ''
+}
 
 export class ApiError extends Error {
   constructor(
@@ -38,14 +43,14 @@ export async function calculateVisibility(
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw error
     }
-    throw new ApiError('계산 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.')
+    throw new ApiError('Unable to connect to the calculation server. Please try again shortly.')
   }
 
   if (!response.ok) {
     let detail = ''
     try {
       const body = (await response.json()) as { detail?: unknown }
-      if (typeof body.detail === 'string') detail = body.detail
+      detail = englishErrorDetail(body.detail)
     } catch {
       // The friendly status-based message below is sufficient for non-JSON errors.
     }
@@ -53,8 +58,8 @@ export async function calculateVisibility(
     throw new ApiError(
       detail ||
         (response.status >= 500
-          ? '서버에서 계산을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-          : '입력값을 확인한 뒤 다시 계산해 주세요.'),
+          ? 'The server could not complete the calculation. Please try again shortly.'
+          : 'Check the input values and run the calculation again.'),
       response.status,
     )
   }
@@ -80,22 +85,22 @@ export async function searchLofarSources(
     response = await fetch(`${LOFAR_ENDPOINT}?${query.toString()}`, { signal })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
-    throw new ApiError('LOFAR DR3 카탈로그 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.')
+    throw new ApiError('Unable to connect to the LOFAR DR3 catalog service. Please try again shortly.')
   }
 
   if (!response.ok) {
     let detail = ''
     try {
       const body = (await response.json()) as { detail?: unknown }
-      if (typeof body.detail === 'string') detail = body.detail
+      detail = englishErrorDetail(body.detail)
     } catch {
       // Use the status-based message below for non-JSON responses.
     }
     throw new ApiError(
       detail ||
         (response.status >= 500
-          ? 'LOFAR DR3 검색을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-          : 'LOFAR DR3 검색 조건을 확인해 주세요.'),
+          ? 'The LOFAR DR3 search could not be completed. Please try again shortly.'
+          : 'Check the LOFAR DR3 search parameters and try again.'),
       response.status,
     )
   }
@@ -121,22 +126,22 @@ export async function coneSearchLofarSources(
     response = await fetch(`${LOFAR_CONE_ENDPOINT}?${query.toString()}`, { signal })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
-    throw new ApiError('LOFAR DR3 cone search 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.')
+    throw new ApiError('Unable to connect to the LOFAR DR3 cone-search service. Please try again shortly.')
   }
 
   if (!response.ok) {
     let detail = ''
     try {
       const body = (await response.json()) as { detail?: unknown }
-      if (typeof body.detail === 'string') detail = body.detail
+      detail = englishErrorDetail(body.detail)
     } catch {
       // Use the status-based message below for non-JSON responses.
     }
     throw new ApiError(
       detail ||
         (response.status >= 500
-          ? 'LOFAR DR3 cone search를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-          : '중심 좌표와 검색 반경을 확인해 주세요.'),
+          ? 'The LOFAR DR3 cone search could not be completed. Please try again shortly.'
+          : 'Check the center coordinates and search radius, then try again.'),
       response.status,
     )
   }

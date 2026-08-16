@@ -1,11 +1,11 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { VisibilityOverviewChart } from './VisibilityOverviewChart'
 import { getTargetColor } from './chartStyles'
 
 describe('VisibilityOverviewChart', () => {
-  it('플롯 대상으로 선택한 target이 없으면 빈 상태를 표시한다', () => {
+  it('shows an empty state when no targets are selected for plotting', () => {
     render(
       <VisibilityOverviewChart
         targets={[]}
@@ -20,12 +20,12 @@ describe('VisibilityOverviewChart', () => {
     )
 
     expect(
-      screen.getByText('플롯할 천체를 하나 이상 선택하세요.'),
+      screen.getByText('Select at least one target to plot.'),
     ).toBeInTheDocument()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 
-  it('동적 카탈로그 target의 선과 범례에 같은 fallback 색상을 적용한다', () => {
+  it('uses the same fallback color for dynamic-catalog target lines and legends', () => {
     const target = (id: string, name: string) => ({
       id,
       name,
@@ -84,5 +84,42 @@ describe('VisibilityOverviewChart', () => {
       'stroke',
       originalSecondColor,
     )
+  })
+
+  it('caps the in-chart tooltip when many targets are plotted', () => {
+    const targets = Array.from({ length: 25 }, (_, index) => ({
+      id: `target-${index}`,
+      name: `Target ${index + 1}`,
+      aliases: [],
+      ra_deg: index,
+      dec_deg: 20,
+      location_series: [{
+        location_id: 'narrabri',
+        location_name: 'Aus - Narrabri',
+        altitudes_deg: [20, 25, 30],
+      }],
+      simultaneous_mask: [true, true, true],
+      visible_intervals: [],
+      max_common_altitude_deg: 30,
+      simultaneous_visible: true,
+    }))
+    const { container } = render(
+      <VisibilityOverviewChart
+        targets={targets}
+        times={[
+          '2026-08-11T00:00:00Z',
+          '2026-08-11T00:15:00Z',
+          '2026-08-11T00:30:00Z',
+        ]}
+        centerTime="2026-08-11T00:15:00Z"
+        minimumAltitude={15}
+      />,
+    )
+
+    fireEvent.focus(screen.getByRole('slider', { name: 'Explore time samples for all targets' }))
+
+    expect(screen.getByText('+13 more targets · see table')).toBeInTheDocument()
+    expect(container.querySelector('.overview-tooltip rect')).toHaveAttribute('height', '305')
+    expect(container.querySelectorAll('.overview-tooltip .tooltip-value')).toHaveLength(13)
   })
 })

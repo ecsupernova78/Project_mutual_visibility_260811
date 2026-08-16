@@ -21,17 +21,17 @@ const responseBody = {
       location_series: [
         {
           location_id: 'narrabri',
-          location_name: 'Narrabri',
+          location_name: 'Aus - Narrabri',
           altitudes_deg: [18, 24, 28],
         },
         {
           location_id: 'pyeongchang',
-          location_name: '평창',
+          location_name: 'Kor - Pyeongchang',
           altitudes_deg: [12, 19, 23],
         },
         {
           location_id: 'fushan',
-          location_name: 'Fushan',
+          location_name: 'Taiwan - Fushan',
           altitudes_deg: [16, 22, 27],
         },
       ],
@@ -76,20 +76,31 @@ describe('상호 가시성 인터페이스', () => {
   it('세 관측지와 다섯 개 카탈로그 천체를 표시한다', () => {
     render(<App />)
 
-    expect(screen.getByDisplayValue('Narrabri')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('평창')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('Fushan')).toBeInTheDocument()
-    expect(screen.getAllByText('북위 + · 남위 −')).toHaveLength(3)
-    expect(screen.getAllByText('동경 + · 서경 −')).toHaveLength(3)
+    expect(screen.getByDisplayValue('Aus - Narrabri')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Kor - Pyeongchang')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Taiwan - Fushan')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Observation Setup' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: /Reference Time UTC/ })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: /Target Selection/ })).toBeInTheDocument()
+    expect(screen.getAllByText('Latitude (N: + / S: −)')).toHaveLength(3)
+    expect(screen.getAllByText('Longitude (E: + / W: −)')).toHaveLength(3)
+    expect(screen.getByRole('spinbutton', { name: 'Aus - Narrabri latitude (N: + / S: −)' })).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Kor - Pyeongchang longitude (E: + / W: −)' })).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Taiwan - Fushan elevation' })).toBeDisabled()
+    expect(screen.queryByText('관측지 A')).not.toBeInTheDocument()
+    expect(screen.queryByText('관측지 B')).not.toBeInTheDocument()
+    expect(screen.queryByText('관측지 C')).not.toBeInTheDocument()
+    expect(screen.queryByText('첫 번째 관측 계획')).not.toBeInTheDocument()
+    expect(screen.queryByText(/원하는 관측지를 골라/)).not.toBeInTheDocument()
     expect(screen.getAllByRole('checkbox')).toHaveLength(8)
-    const builtInTargetList = screen.getByRole('list', { name: '기본 3C 전파원' })
+    const builtInTargetList = screen.getByRole('list', { name: 'Examples of 5 Radio sources' })
     const builtInTargets = within(builtInTargetList).getAllByRole('listitem')
     expect(builtInTargets.map((item) => item.querySelector('b')?.textContent)).toEqual([
       '3C123', '3C273', '3C433', '3C295', '3C134',
     ])
-    expect(screen.getByLabelText('Fushan 관측에 포함')).not.toBeChecked()
-    expect(screen.getByText(/해발고도 미지정으로 기본 0 m/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '공통 가시성 계산' })).toBeEnabled()
+    expect(screen.getByLabelText('Include Taiwan - Fushan in the observation')).not.toBeChecked()
+    expect(screen.getByText(/Elevation defaults to 0 m/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Plot Altitude-Time' })).toBeEnabled()
   })
 
   it('API 계약대로 계산을 요청하고 선택 천체 그래프를 표시한다', async () => {
@@ -102,34 +113,34 @@ describe('상호 가시성 인터페이스', () => {
     )
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
-    expect(await screen.findByRole('img', { name: /3C123 시간–고도 그래프/ })).toBeInTheDocument()
-    const detailImage = screen.getByRole('img', { name: /3C123 시간–고도 그래프/ })
-    const overviewImage = screen.getByRole('img', { name: /공통 가시 천체 전체 시간–고도 개요/ })
+    expect(await screen.findByRole('img', { name: /3C123 altitude–time chart/ })).toBeInTheDocument()
+    const detailImage = screen.getByRole('img', { name: /3C123 altitude–time chart/ })
+    const overviewImage = screen.getByRole('img', { name: /Altitude–time overview of sampled simultaneously visible targets/ })
     expect(detailImage).toBeInTheDocument()
     expect(overviewImage).toBeInTheDocument()
     expect(detailImage.querySelector('[role="slider"]')).not.toBeInTheDocument()
     expect(overviewImage.querySelector('[role="slider"]')).not.toBeInTheDocument()
-    expect(screen.getByRole('slider', { name: '시간 샘플 탐색' })).toBeInTheDocument()
-    expect(screen.getByRole('slider', { name: '전체 천체 시간 샘플 탐색' })).toBeInTheDocument()
-    expect(screen.getByText('최소 고도 15°', { selector: '.site-pattern-legend .legend-item' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /전체 개요로 이동/ })).toHaveAttribute(
+    expect(screen.getAllByRole('slider', { name: 'Explore time samples' })).not.toHaveLength(0)
+    expect(screen.getByRole('slider', { name: 'Explore time samples for all targets' })).toBeInTheDocument()
+    expect(screen.getByText('Altitude threshold 15°', { selector: '.site-pattern-legend .legend-item' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Jump to Overview/ })).toHaveAttribute(
       'href',
       '#common-visibility-overview',
     )
-    expect(screen.getByText('동시 관측 가능', { selector: '.target-result-topline' })).toBeInTheDocument()
+    expect(screen.getByText('Simultaneously visible', { selector: '.target-result-topline' })).toBeInTheDocument()
     const targetCard = screen.getByRole('tab', { name: /3C123/ })
-    expect(within(targetCard).getByText('시간창 내 최장 공통 가시 구간')).toBeInTheDocument()
-    expect(within(targetCard).getByText('15분')).toBeInTheDocument()
-    const detailPanel = screen.getByRole('tabpanel', { name: '3C123 고도 그래프' })
+    expect(within(targetCard).getByText('Longest common visibility within window')).toBeInTheDocument()
+    expect(within(targetCard).getByText('15 min')).toBeInTheDocument()
+    const detailPanel = screen.getByRole('tabpanel', { name: '3C123 altitude chart' })
     const durationMetric = within(detailPanel)
-      .getByText('시간창 내 최장 공통 가시 구간')
+      .getByText('Longest Common Visibility Within Window')
       .closest('.duration-metric')
-    expect(durationMetric).toHaveTextContent('15분')
-    expect(durationMetric).toHaveTextContent('샘플 기준')
-    expect(durationMetric).toHaveTextContent('창 경계 도달 · 창 밖은 미계산')
-    expect(detailPanel).toHaveTextContent('샘플 사이 모든 순간의 연속 가시성을 보장하지 않으며')
+    expect(durationMetric).toHaveTextContent('15 min')
+    expect(durationMetric).toHaveTextContent('Sample-based')
+    expect(durationMetric).toHaveTextContent('Reaches window boundary · outside window not calculated')
+    expect(detailPanel).toHaveTextContent('This does not guarantee uninterrupted visibility between samples')
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
     const [url, init] = fetchMock.mock.calls[0]
@@ -153,10 +164,10 @@ describe('상호 가시성 인터페이스', () => {
     const overviewPanel = document.querySelector('#common-visibility-overview')
     expect(overviewPanel).not.toBeNull()
     expect(within(overviewPanel as HTMLElement).queryByRole('table')).not.toBeInTheDocument()
-    await user.click(screen.getByText('전체 수치 데이터 표'))
+    await user.click(screen.getByText('Full numerical data table'))
     expect(
       within(overviewPanel as HTMLElement).getByRole('table', {
-        name: /공통 가시 천체의 관측지별/,
+        name: /Altitude–time data in UTC by observing site for simultaneously visible targets/,
       }),
     ).toBeInTheDocument()
   })
@@ -220,16 +231,16 @@ describe('상호 가시성 인터페이스', () => {
     })
     render(<App />)
 
-    const visibilityTab = screen.getByRole('tab', { name: '관측 가시성' })
-    const catalogTab = screen.getByRole('tab', { name: 'LOFAR DR3 카탈로그' })
+    const visibilityTab = screen.getByRole('tab', { name: 'Observation Visibility' })
+    const catalogTab = screen.getByRole('tab', { name: 'LOFAR DR3 Catalog' })
     expect(visibilityTab).toHaveAttribute('aria-selected', 'true')
     await user.click(catalogTab)
     expect(catalogTab).toHaveAttribute('aria-selected', 'true')
 
-    await user.type(screen.getByLabelText('Source ID 앞부분 (선택)'), 'ILTJ1234')
-    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
+    await user.type(screen.getByLabelText('Source ID prefix (optional)'), 'ILTJ1234')
+    await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
     const sourceCheckbox = await screen.findByRole('checkbox', {
-      name: `${source.name} 계산 대상에 추가`,
+      name: `${source.name}: add to visibility targets`,
     })
     expect(sourceCheckbox).not.toBeChecked()
 
@@ -242,12 +253,13 @@ describe('상호 가시성 인터페이스', () => {
 
     await user.click(sourceCheckbox)
     expect(sourceCheckbox).toBeChecked()
-    await user.click(screen.getByRole('button', { name: '관측 설정으로 이동' }))
-    expect(screen.getByText('LOFAR DR3에서 가져온 천체')).toBeInTheDocument()
-    const importedList = screen.getByLabelText('가져온 LOFAR DR3 천체 목록')
+    await user.click(screen.getByRole('button', { name: 'Go to Observation Setup' }))
+    expect(screen.getByText('Targets Imported from LOFAR DR3')).toBeInTheDocument()
+    const importedList = screen.getByLabelText('Imported LOFAR DR3 target list')
     expect(within(importedList).getByText(source.name, { selector: 'b' })).toBeInTheDocument()
+    expect(importedList).not.toHaveTextContent(/[가-힣]/)
 
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     const payload = JSON.parse(String(fetchMock.mock.calls[1][1]?.body)) as {
       target_ids: string[]
@@ -265,8 +277,6 @@ describe('상호 가시성 인터페이스', () => {
       total_flux_mjy: source.total_flux_mjy,
       peak_flux_mjy: source.peak_flux_mjy,
       morphology_code: source.morphology_code,
-      morphology_label: source.morphology_label,
-      morphology_description: source.morphology_description,
       counterpart_name: source.counterpart_name,
       counterpart_aliases: source.counterpart_aliases,
       object_type_code: source.object_type_code,
@@ -277,9 +287,9 @@ describe('상호 가시성 인터페이스', () => {
       crossmatch_catalog: source.crossmatch_catalog,
     }])
 
-    await user.click(screen.getByRole('tab', { name: /LOFAR DR3 카탈로그/ }))
-    expect(screen.getByLabelText('Source ID 앞부분 (선택)')).toHaveValue('ILTJ1234')
-    expect(screen.getByRole('checkbox', { name: `${source.name} 계산 대상에서 제거` })).toBeChecked()
+    await user.click(screen.getByRole('tab', { name: /LOFAR DR3 Catalog/ }))
+    expect(screen.getByLabelText('Source ID prefix (optional)')).toHaveValue('ILTJ1234')
+    expect(screen.getByRole('checkbox', { name: `${source.name}: remove from visibility targets` })).toBeChecked()
   })
 
   it('메인에서 LOFAR 천체를 해제해도 목록을 보존하고 계산 payload에만 선택 상태를 반영한다', async () => {
@@ -327,35 +337,35 @@ describe('상호 가시성 인터페이스', () => {
     })
     render(<App />)
 
-    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 카탈로그' }))
-    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
-    await user.click(await screen.findByRole('checkbox', { name: '3C123 계산 대상에 추가' }))
-    await user.click(screen.getByRole('button', { name: '관측 설정으로 이동' }))
+    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 Catalog' }))
+    await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
+    await user.click(await screen.findByRole('checkbox', { name: '3C123: add to visibility targets' }))
+    await user.click(screen.getByRole('button', { name: 'Go to Observation Setup' }))
 
-    const importedList = screen.getByLabelText('가져온 LOFAR DR3 천체 목록')
+    const importedList = screen.getByLabelText('Imported LOFAR DR3 target list')
     const importedCheckbox = within(importedList).getByRole('checkbox', {
-      name: '3C123 계산 대상에서 해제',
+      name: 'Exclude 3C123 from the calculation',
     })
     await user.click(importedCheckbox)
     expect(within(importedList).getByText('3C123', { selector: 'b' })).toBeInTheDocument()
     expect(within(importedList).getByRole('checkbox', {
-      name: '3C123 계산 대상으로 선택',
+      name: 'Include 3C123 in the calculation',
     })).not.toBeChecked()
 
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body)).custom_targets).toEqual([])
 
     const unselectedCheckbox = within(importedList).getByRole('checkbox', {
-      name: '3C123 계산 대상으로 선택',
+      name: 'Include 3C123 in the calculation',
     })
     await user.click(unselectedCheckbox)
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body)).custom_targets).toHaveLength(1)
 
-    await user.click(within(importedList).getByRole('button', { name: '3C123 가져온 목록에서 삭제' }))
-    expect(screen.queryByLabelText('가져온 LOFAR DR3 천체 목록')).not.toBeInTheDocument()
+    await user.click(within(importedList).getByRole('button', { name: 'Remove 3C123 from the imported list' }))
+    expect(screen.queryByLabelText('Imported LOFAR DR3 target list')).not.toBeInTheDocument()
   })
 
   it('Source ID prefix를 비워 두면 전체 카탈로그 TOP 목록을 요청한다', async () => {
@@ -375,10 +385,10 @@ describe('상호 가시성 인터페이스', () => {
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     render(<App />)
 
-    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 카탈로그' }))
-    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
+    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 Catalog' }))
+    await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
 
-    expect(await screen.findByText('일치하는 천체가 없습니다.')).toBeInTheDocument()
+    expect(await screen.findByText('No matching sources found.')).toBeInTheDocument()
     const searchParams = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost').searchParams
     expect(searchParams.has('source_prefix')).toBe(false)
     expect(searchParams.get('limit')).toBe('100')
@@ -413,21 +423,21 @@ describe('상호 가시성 인터페이스', () => {
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: '전체 해제' }))
-    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 카탈로그' }))
-    await user.type(screen.getByLabelText('Source ID 앞부분 (선택)'), 'ILTJ1234')
-    await user.click(screen.getByRole('button', { name: 'LOFAR DR3 목록 불러오기' }))
-    const sourceChecks = await screen.findAllByRole('checkbox', { name: /계산 대상에 추가/ })
+    await user.click(screen.getByRole('button', { name: 'Deselect All' }))
+    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 Catalog' }))
+    await user.type(screen.getByLabelText('Source ID prefix (optional)'), 'ILTJ1234')
+    await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
+    const sourceChecks = await screen.findAllByRole('checkbox', { name: /add to visibility targets/ })
     expect(sourceChecks).toHaveLength(25)
     for (const checkbox of sourceChecks) await user.click(checkbox)
     expect(screen.getByText('25 / 25')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '관측 설정으로 이동' }))
+    await user.click(screen.getByRole('button', { name: 'Go to Observation Setup' }))
     expect(screen.getByRole('checkbox', { name: /3C123/ })).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: '전체 선택' }))
-    expect(screen.getByText(/전체 25\/25개/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Select All' }))
+    expect(screen.getByText(/0\/5 selected/)).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: /3C123/ })).not.toBeChecked()
-  })
+  }, 10_000)
 
   it('전체 개요에서 시간창 내 가시 천체만 골라 플롯하고 새 계산 때 모두 복원한다', async () => {
     const user = userEvent.setup()
@@ -461,7 +471,7 @@ describe('상호 가시성 인터페이스', () => {
     )
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     expect(await screen.findByRole('tab', { name: /3C273/ })).toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: /3C433/ })).not.toBeInTheDocument()
@@ -471,17 +481,17 @@ describe('상호 가시성 인터페이스', () => {
     expect(within(overview as HTMLElement).getByText('3C273', { selector: '.legend-item' })).toBeInTheDocument()
     expect(within(overview as HTMLElement).queryByText('3C433', { selector: '.legend-item' })).not.toBeInTheDocument()
     const target123Checkbox = within(overview as HTMLElement).getByRole('checkbox', {
-      name: '개요 그래프에 3C123 표시',
+      name: 'Plot 3C123 in the overview',
     })
     const target273Checkbox = within(overview as HTMLElement).getByRole('checkbox', {
-      name: '개요 그래프에 3C273 표시',
+      name: 'Plot 3C273 in the overview',
     })
     expect(target123Checkbox).toBeChecked()
     expect(target273Checkbox).toBeChecked()
     expect(within(overview as HTMLElement).queryByRole('checkbox', {
-      name: '개요 그래프에 3C433 표시',
+      name: 'Plot 3C433 in the overview',
     })).not.toBeInTheDocument()
-    expect(within(overview as HTMLElement).getByText('2 / 2개 표시')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('2 / 2 plotted')).toBeInTheDocument()
     expect(overview?.querySelectorAll('.overview-altitude-line')).toHaveLength(
       responseBody.targets[0].location_series.length * 2,
     )
@@ -489,7 +499,7 @@ describe('상호 가시성 인터페이스', () => {
     await user.click(target273Checkbox)
 
     expect(target273Checkbox).not.toBeChecked()
-    expect(within(overview as HTMLElement).getByText('1 / 2개 표시')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('1 / 2 plotted')).toBeInTheDocument()
     expect(within(overview as HTMLElement).getByText('3C123', { selector: '.legend-item' })).toBeInTheDocument()
     expect(within(overview as HTMLElement).queryByText('3C273', { selector: '.legend-item' })).not.toBeInTheDocument()
     expect(overview?.querySelectorAll('.overview-altitude-line')).toHaveLength(
@@ -498,41 +508,41 @@ describe('상호 가시성 인터페이스', () => {
     expect(screen.getByRole('tab', { name: /3C123/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /3C273/ })).toBeInTheDocument()
 
-    await user.click(within(overview as HTMLElement).getByText('전체 수치 데이터 표'))
+    await user.click(within(overview as HTMLElement).getByText('Full numerical data table'))
     const filteredTable = within(overview as HTMLElement).getByRole('table')
     expect(within(filteredTable).getAllByRole('columnheader', { name: /3C123/ })).not.toHaveLength(0)
     expect(within(filteredTable).queryByRole('columnheader', { name: /3C273/ })).not.toBeInTheDocument()
 
-    await user.click(within(overview as HTMLElement).getByRole('button', { name: '모두 숨기기' }))
+    await user.click(within(overview as HTMLElement).getByRole('button', { name: 'Hide All' }))
 
     expect(target123Checkbox).not.toBeChecked()
-    expect(within(overview as HTMLElement).getByText('0 / 2개 표시')).toBeInTheDocument()
-    expect(within(overview as HTMLElement).getByText('플롯할 천체를 하나 이상 선택하세요.')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('0 / 2 plotted')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('Select at least one target to plot.')).toBeInTheDocument()
     expect(within(overview as HTMLElement).queryByRole('img')).not.toBeInTheDocument()
     expect(within(overview as HTMLElement).queryByRole('slider')).not.toBeInTheDocument()
-    expect(within(overview as HTMLElement).queryByText('전체 수치 데이터 표')).not.toBeInTheDocument()
+    expect(within(overview as HTMLElement).queryByText('Full numerical data table')).not.toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /3C273/ })).toBeInTheDocument()
 
     await user.click(within(overview as HTMLElement).getByRole('button', {
-      name: '관측 가능 천체 모두 표시',
+      name: 'Show All Visible Targets',
     }))
 
     expect(target123Checkbox).toBeChecked()
     expect(target273Checkbox).toBeChecked()
-    expect(within(overview as HTMLElement).getByText('2 / 2개 표시')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('2 / 2 plotted')).toBeInTheDocument()
     expect(overview?.querySelectorAll('.overview-altitude-line')).toHaveLength(
       responseBody.targets[0].location_series.length * 2,
     )
 
     await user.click(target273Checkbox)
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    expect(await screen.findByText('2 / 2개 표시')).toBeInTheDocument()
+    expect(await screen.findByText('2 / 2 plotted')).toBeInTheDocument()
     const recalculatedOverview = document.querySelector('#common-visibility-overview')
     expect(recalculatedOverview).not.toBeNull()
     expect(within(recalculatedOverview as HTMLElement).getByRole('checkbox', {
-      name: '개요 그래프에 3C273 표시',
+      name: 'Plot 3C273 in the overview',
     })).toBeChecked()
   })
 
@@ -561,14 +571,14 @@ describe('상호 가시성 인터페이스', () => {
     )
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     const targetCard = await screen.findByRole('tab', { name: /3C123/ })
-    expect(targetCard).toHaveTextContent('단일 샘플')
-    expect(targetCard).toHaveTextContent('지속시간 미확정')
-    const detailPanel = screen.getByRole('tabpanel', { name: '3C123 고도 그래프' })
-    expect(detailPanel.querySelector('.duration-metric')).toHaveTextContent('단일 샘플')
-    expect(detailPanel.querySelector('.duration-metric')).toHaveTextContent('지속시간 미확정')
+    expect(targetCard).toHaveTextContent('Single sample')
+    expect(targetCard).toHaveTextContent('Duration undetermined')
+    const detailPanel = screen.getByRole('tabpanel', { name: '3C123 altitude chart' })
+    expect(detailPanel.querySelector('.duration-metric')).toHaveTextContent('Single sample')
+    expect(detailPanel.querySelector('.duration-metric')).toHaveTextContent('Duration undetermined')
   })
 
   it('중심 시각에 보이지 않아도 시간창 안에 가시 샘플이 있으면 개요에 표시한다', async () => {
@@ -588,16 +598,16 @@ describe('상호 가시성 인터페이스', () => {
     )
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
-    expect(await screen.findByRole('img', { name: /3C123 시간–고도 그래프/ })).toBeInTheDocument()
+    expect(await screen.findByRole('img', { name: /3C123 altitude–time chart/ })).toBeInTheDocument()
     const overview = document.querySelector('#common-visibility-overview')
     expect(overview).not.toBeNull()
-    expect(within(overview as HTMLElement).getByText('1 / 1개 표시')).toBeInTheDocument()
+    expect(within(overview as HTMLElement).getByText('1 / 1 plotted')).toBeInTheDocument()
     expect(within(overview as HTMLElement).getByText('3C123', { selector: '.legend-item' })).toBeInTheDocument()
     expect(within(overview as HTMLElement).getByRole('img', {
-      name: /공통 가시 천체 전체 시간–고도 개요/,
-    })).toHaveAccessibleDescription(/전체 시간창의 하나 이상의 계산 샘플에서/)
+      name: /Altitude–time overview of sampled simultaneously visible targets/,
+    })).toHaveAccessibleDescription(/one or more computed samples in the selected time window/)
   })
 
   it('Fushan을 포함하면 세 관측지를 요청하고 세 위치 곡선을 표시한다', async () => {
@@ -610,8 +620,8 @@ describe('상호 가시성 인터페이스', () => {
     )
     render(<App />)
 
-    await user.click(screen.getByLabelText('Fushan 관측에 포함'))
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByLabelText('Include Taiwan - Fushan in the observation'))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
     const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as {
@@ -624,7 +634,7 @@ describe('상호 가시성 인터페이스', () => {
       longitude_deg: 121.5816388889,
       elevation_m: 0,
     })
-    expect(await screen.findAllByText('Fushan', { selector: '.legend-item' })).toHaveLength(2)
+    expect(await screen.findAllByText('Taiwan - Fushan', { selector: '.legend-item' })).toHaveLength(2)
   })
 
   it('제외한 관측지의 잘못된 입력은 선택된 관측지 계산을 막지 않는다', async () => {
@@ -637,16 +647,16 @@ describe('상호 가시성 인터페이스', () => {
     )
     render(<App />)
 
-    await user.click(screen.getByLabelText('Fushan 관측에 포함'))
+    await user.click(screen.getByLabelText('Include Taiwan - Fushan in the observation'))
     const fushanLatitude = document.querySelector('#location-2-latitude') as HTMLInputElement
     expect(fushanLatitude).toBeEnabled()
     await user.clear(fushanLatitude)
     await user.type(fushanLatitude, '91')
     expect(fushanLatitude).toBeInvalid()
 
-    await user.click(screen.getByLabelText('Fushan 관측에 포함'))
+    await user.click(screen.getByLabelText('Include Taiwan - Fushan in the observation'))
     expect(fushanLatitude).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
     const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as {
@@ -678,25 +688,25 @@ describe('상호 가시성 인터페이스', () => {
     )
     render(<App />)
 
-    await user.click(screen.getByLabelText('평창 관측에 포함'))
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByLabelText('Include Kor - Pyeongchang in the observation'))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
-    expect(await screen.findByRole('img', { name: /3C123 시간–고도 그래프/ })).toBeInTheDocument()
+    expect(await screen.findByRole('img', { name: /3C123 altitude–time chart/ })).toBeInTheDocument()
     const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as {
       locations: Array<Record<string, unknown>>
     }
     expect(payload.locations).toEqual([
       expect.objectContaining({ id: 'narrabri' }),
     ])
-    const detailChart = screen.getByRole('tabpanel', { name: /3C123 고도 그래프/ })
+    const detailChart = screen.getByRole('tabpanel', { name: /3C123 altitude chart/ })
     expect(detailChart.querySelectorAll('.legend-line')).toHaveLength(1)
-    expect(detailChart).toHaveTextContent('Narrabri')
-    expect(detailChart).not.toHaveTextContent('평창')
-    expect(detailChart).not.toHaveTextContent('Fushan')
+    expect(detailChart).toHaveTextContent('Aus - Narrabri')
+    expect(detailChart).not.toHaveTextContent('Kor - Pyeongchang')
+    expect(detailChart).not.toHaveTextContent('Taiwan - Fushan')
 
-    await user.click(screen.getByLabelText('Fushan 관측에 포함'))
-    expect(screen.queryByRole('img', { name: /3C123 시간–고도 그래프/ })).not.toBeInTheDocument()
-    expect(screen.getByText(/원하는 관측지를 골라/)).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Include Taiwan - Fushan in the observation'))
+    expect(screen.queryByRole('img', { name: /3C123 altitude–time chart/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Simultaneously Visible Target Search')).toBeInTheDocument()
   })
 
   it('관측지가 하나도 없으면 요청 전에 검증한다', async () => {
@@ -704,11 +714,11 @@ describe('상호 가시성 인터페이스', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
     render(<App />)
 
-    await user.click(screen.getByLabelText('Narrabri 관측에 포함'))
-    await user.click(screen.getByLabelText('평창 관측에 포함'))
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByLabelText('Include Aus - Narrabri in the observation'))
+    await user.click(screen.getByLabelText('Include Kor - Pyeongchang in the observation'))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('관측지를 하나 이상 선택')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Select at least one observation site')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -717,18 +727,18 @@ describe('상호 가시성 인터페이스', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
     render(<App />)
 
-    const beforeInput = screen.getByLabelText(/이전/)
-    const afterInput = screen.getByLabelText(/이후/)
-    const stepInput = screen.getByLabelText(/계산 간격/)
+    const beforeInput = screen.getByLabelText(/Before/)
+    const afterInput = screen.getByLabelText(/After/)
+    const stepInput = screen.getByLabelText(/Calculation Interval/)
     await user.clear(beforeInput)
     await user.type(beforeInput, '0.25')
     await user.clear(afterInput)
     await user.type(afterInput, '0.25')
     await user.clear(stepInput)
     await user.type(stepInput, '180')
-    await user.click(screen.getByRole('button', { name: '공통 가시성 계산' }))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('샘플이 1개뿐입니다')
+    expect(await screen.findByRole('alert')).toHaveTextContent('produce only one sample')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
