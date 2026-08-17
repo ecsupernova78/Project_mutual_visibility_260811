@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import type { VisibilityTarget } from '../types'
@@ -16,7 +16,7 @@ function target(overrides: Partial<VisibilityTarget> = {}): VisibilityTarget {
     location_series: [
       {
         location_id: 'narrabri',
-        location_name: 'Aus - Narrabri',
+        location_name: 'Narrabri (Aus)',
         altitudes_deg: [20, 25],
       },
     ],
@@ -42,17 +42,24 @@ describe('AltitudeChart', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 
-  it('provides English chart legends and accessible sampled-visibility controls', () => {
+  it('provides concise chart legends and accessible time controls', () => {
     render(<AltitudeChart target={target()} times={times} minimumAltitude={15} />)
 
     expect(screen.getByLabelText('Chart legend')).toHaveTextContent('Altitude threshold 15°')
     expect(screen.getByLabelText('Chart legend')).toHaveTextContent(
-      'Samples meeting the simultaneous-visibility threshold',
+      'Common visibility window',
     )
     expect(screen.getByRole('img')).toHaveAccessibleName(/3C 84 altitude–time chart/)
-    expect(screen.getByRole('slider', { name: 'Explore time samples' })).toBeInTheDocument()
+    const timeSlider = screen.getByRole('slider', { name: '3C 84 time (UTC)' })
+    expect(timeSlider).toBeInTheDocument()
+    expect(screen.queryByText(/Point at the chart/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy 3C 84 altitude–time plot image' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Download 3C 84 altitude–time plot image' })).toBeInTheDocument()
+
+    fireEvent.focus(timeSlider)
+    expect(document.querySelector('.plot-background')).toHaveAttribute('fill', '#ffffff')
+    expect(document.querySelector('.chart-grid')).toHaveAttribute('fill', '#111111')
+    expect(document.querySelector('.chart-tooltip')).toHaveAttribute('fill', '#111111')
   })
 
   it('plots a 0 to 90 degree axis and clips below-horizon path segments', () => {
@@ -61,7 +68,7 @@ describe('AltitudeChart', () => {
         target={target({
           location_series: [{
             location_id: 'narrabri',
-            location_name: 'Aus - Narrabri',
+            location_name: 'Narrabri (Aus)',
             altitudes_deg: [-30, 45],
           }],
         })}
@@ -76,10 +83,10 @@ describe('AltitudeChart', () => {
     expect(yTickLabels).toEqual(['0°', '15°', '30°', '45°', '60°', '75°', '90°'])
 
     const altitudePath = container.querySelector('.altitude-line')
-    expect(altitudePath).toHaveAttribute('d', 'M58.00,429.33 L896.00,176.00')
+    expect(altitudePath).toHaveAttribute('d', 'M68.00,429.33 L896.00,176.00')
     expect(altitudePath?.parentElement).toHaveAttribute('clip-path', expect.stringMatching(/^url\(#visible-/))
     expect(container.querySelector('desc')).toHaveTextContent(
-      'The plotted altitude range is 0 to 90 degrees',
+      'Altitude from 0 to 90 degrees',
     )
   })
 })

@@ -48,14 +48,14 @@ describe('common visibility duration', () => {
     expect(getLongestCommonVisibility([first, second], 15, 12)?.interval).toBe(first)
   })
 
-  it('labels one visible sample without overstating it as a zero-minute interval', () => {
+  it('formats a single-point span as zero elapsed minutes', () => {
     const result = getLongestCommonVisibility(
       [interval({ start_index: 3, end_index: 3, sample_count: 1 })],
       15,
     )
 
     expect(result?.elapsedMinutes).toBe(0)
-    expect(result?.label).toBe('Single sample')
+    expect(result?.label).toBe('0 min')
   })
 
   it('identifies when the longest interval reaches a calculation-window boundary', () => {

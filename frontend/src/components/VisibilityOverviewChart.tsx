@@ -13,7 +13,7 @@ interface VisibilityOverviewChartProps {
 
 const WIDTH = 920
 const HEIGHT = 430
-const MARGIN = { top: 28, right: 24, bottom: 58, left: 58 }
+const MARGIN = { top: 28, right: 24, bottom: 58, left: 68 }
 const PLOT_WIDTH = WIDTH - MARGIN.left - MARGIN.right
 const PLOT_HEIGHT = HEIGHT - MARGIN.top - MARGIN.bottom
 const Y_MIN = 0
@@ -126,7 +126,7 @@ export function VisibilityOverviewChart({
   const omittedTooltipTargets = targets.length - tooltipTargets.length
   const tooltipHeight = 45 + tooltipTargets.length * 20 + (omittedTooltipTargets > 0 ? 20 : 0)
   const activeSummary = safeActiveIndex === null
-    ? `${formatUtcTick(times[centerIndex], true)} reference UTC sample`
+    ? `Reference UTC ${formatUtcTick(times[centerIndex], true)}`
     : `${formatUtcTick(times[safeActiveIndex], true)} UTC, ${targets
         .map((target) => {
           const altitude = commonAltitude(target, safeActiveIndex)
@@ -187,21 +187,16 @@ export function VisibilityOverviewChart({
           aria-labelledby={`${chartId}-title`}
           aria-describedby={`${chartId}-description`}
         >
-          <title id={`${chartId}-title`}>Altitude–time overview of sampled simultaneously visible targets</title>
+          <title id={`${chartId}-title`}>Altitude–time overview of simultaneously visible targets</title>
           <desc id={`${chartId}-description`}>
-            Compares the geometric altitudes of {targets.length} {targets.length === 1 ? 'target' : 'targets'} that reach at least
-            {minimumAltitude} degrees at every selected observing site during one or more computed
-            samples in the selected time window. Color identifies the target, line style identifies
-            the observing site, the vertical reference marks the reference UTC, and the red dashed line
-            marks the altitude threshold. Visibility is evaluated at computed samples and does not
-            establish continuous visibility between samples. The plotted altitude range is 0 to 90
-            degrees; negative altitudes below the horizon are clipped from the chart.
+            Altitude from 0 to 90 degrees in UTC for {targets.length} simultaneously visible {targets.length === 1 ? 'target' : 'targets'} at each selected observing site.
           </desc>
+          <rect width={WIDTH} height={HEIGHT} fill="#ffffff" className="plot-background" />
           <clipPath id={`${chartId}-clip`}>
             <rect x={MARGIN.left} y={MARGIN.top} width={PLOT_WIDTH} height={PLOT_HEIGHT} />
           </clipPath>
 
-          <g className="chart-grid">
+          <g className="chart-grid" fill="#111111">
             {Y_TICKS.map((tick) => (
               <g key={tick}>
                 <line
@@ -271,20 +266,21 @@ export function VisibilityOverviewChart({
           </g>
 
           <text
-            x={17}
+            x={20}
             y={MARGIN.top + PLOT_HEIGHT / 2}
             textAnchor="middle"
-            transform={`rotate(-90 17 ${MARGIN.top + PLOT_HEIGHT / 2})`}
+            transform={`rotate(-90 20 ${MARGIN.top + PLOT_HEIGHT / 2})`}
             className="axis-title"
+            fill="#111111"
           >
             Geometric altitude
           </text>
-          <text x={MARGIN.left + PLOT_WIDTH / 2} y={HEIGHT - 7} textAnchor="middle" className="axis-title">
+          <text x={MARGIN.left + PLOT_WIDTH / 2} y={HEIGHT - 7} textAnchor="middle" className="axis-title" fill="#111111">
             Time (UTC)
           </text>
 
           {safeActiveIndex !== null && activeX !== null && (
-            <g className="chart-tooltip overview-tooltip" pointerEvents="none">
+            <g className="chart-tooltip overview-tooltip" pointerEvents="none" fill="#111111">
               <rect x={tooltipX} y={35} width={tooltipWidth} height={tooltipHeight} rx="10" />
               <text x={tooltipX + 13} y={57} className="tooltip-time">
                 {formatUtcTick(times[safeActiveIndex], true)} UTC
@@ -296,7 +292,7 @@ export function VisibilityOverviewChart({
                     key={target.id}
                     x={tooltipX + 13}
                     y={80 + index * 20}
-                    fill={getTargetColor(target.id, index)}
+                    fill="#111111"
                     className="tooltip-value"
                   >
                     {target.name}: site minimum {altitude?.toFixed(1) ?? '—'}°
@@ -330,24 +326,20 @@ export function VisibilityOverviewChart({
       </div>
 
       <label className="chart-scrubber">
-        <span>Explore time samples for all targets</span>
+        <span>Time (UTC)</span>
         <input
           type="range"
           min={0}
           max={pointCount - 1}
           step={1}
           value={safeActiveIndex ?? centerIndex}
-          aria-label="Explore time samples for all targets"
+          aria-label="Overview time (UTC)"
           aria-valuetext={activeSummary}
           onFocus={() => setActiveIndex((current) => current ?? centerIndex)}
           onChange={(event) => setActiveIndex(Number(event.currentTarget.value))}
         />
         <output>{formatUtcTick(times[safeActiveIndex ?? centerIndex], true)} UTC</output>
       </label>
-
-      <p className="chart-hint">
-        Color identifies the target and line style identifies the observing site. Use the time slider to inspect the minimum geometric altitude across sites.
-      </p>
 
       <details
         className="overview-data-table"

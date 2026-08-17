@@ -21,17 +21,17 @@ const responseBody = {
       location_series: [
         {
           location_id: 'narrabri',
-          location_name: 'Aus - Narrabri',
+          location_name: 'Narrabri (Aus)',
           altitudes_deg: [18, 24, 28],
         },
         {
           location_id: 'pyeongchang',
-          location_name: 'Kor - Pyeongchang',
+          location_name: 'Pyeongchang (Kor)',
           altitudes_deg: [12, 19, 23],
         },
         {
           location_id: 'fushan',
-          location_name: 'Taiwan - Fushan',
+          location_name: 'Fushan (Taiwan)',
           altitudes_deg: [16, 22, 27],
         },
       ],
@@ -76,17 +76,17 @@ describe('상호 가시성 인터페이스', () => {
   it('세 관측지와 다섯 개 카탈로그 천체를 표시한다', () => {
     render(<App />)
 
-    expect(screen.getByDisplayValue('Aus - Narrabri')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('Kor - Pyeongchang')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('Taiwan - Fushan')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Narrabri (Aus)')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Pyeongchang (Kor)')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Fushan (Taiwan)')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Observation Setup' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: /Reference Time UTC/ })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: /Target Selection/ })).toBeInTheDocument()
     expect(screen.getAllByText('Latitude (N: + / S: −)')).toHaveLength(3)
     expect(screen.getAllByText('Longitude (E: + / W: −)')).toHaveLength(3)
-    expect(screen.getByRole('spinbutton', { name: 'Aus - Narrabri latitude (N: + / S: −)' })).toBeInTheDocument()
-    expect(screen.getByRole('spinbutton', { name: 'Kor - Pyeongchang longitude (E: + / W: −)' })).toBeInTheDocument()
-    expect(screen.getByRole('spinbutton', { name: 'Taiwan - Fushan elevation' })).toBeDisabled()
+    expect(screen.getByRole('spinbutton', { name: 'Narrabri (Aus) latitude (N: + / S: −)' })).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Pyeongchang (Kor) longitude (E: + / W: −)' })).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Fushan (Taiwan) elevation' })).toBeDisabled()
     expect(screen.queryByText('관측지 A')).not.toBeInTheDocument()
     expect(screen.queryByText('관측지 B')).not.toBeInTheDocument()
     expect(screen.queryByText('관측지 C')).not.toBeInTheDocument()
@@ -98,7 +98,7 @@ describe('상호 가시성 인터페이스', () => {
     expect(builtInTargets.map((item) => item.querySelector('b')?.textContent)).toEqual([
       '3C123', '3C273', '3C433', '3C295', '3C134',
     ])
-    expect(screen.getByLabelText('Include Taiwan - Fushan in the observation')).not.toBeChecked()
+    expect(screen.getByLabelText('Include Fushan (Taiwan) in the observation')).not.toBeChecked()
     expect(screen.getByText(/Elevation defaults to 0 m/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Plot Altitude-Time' })).toBeEnabled()
   })
@@ -117,30 +117,31 @@ describe('상호 가시성 인터페이스', () => {
 
     expect(await screen.findByRole('img', { name: /3C123 altitude–time chart/ })).toBeInTheDocument()
     const detailImage = screen.getByRole('img', { name: /3C123 altitude–time chart/ })
-    const overviewImage = screen.getByRole('img', { name: /Altitude–time overview of sampled simultaneously visible targets/ })
+    const overviewImage = screen.getByRole('img', { name: /Altitude–time overview of simultaneously visible targets/ })
     expect(detailImage).toBeInTheDocument()
     expect(overviewImage).toBeInTheDocument()
     expect(detailImage.querySelector('[role="slider"]')).not.toBeInTheDocument()
     expect(overviewImage.querySelector('[role="slider"]')).not.toBeInTheDocument()
-    expect(screen.getAllByRole('slider', { name: 'Explore time samples' })).not.toHaveLength(0)
-    expect(screen.getByRole('slider', { name: 'Explore time samples for all targets' })).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: '3C123 time (UTC)' })).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Overview time (UTC)' })).toBeInTheDocument()
     expect(screen.getByText('Altitude threshold 15°', { selector: '.site-pattern-legend .legend-item' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Jump to Overview/ })).toHaveAttribute(
       'href',
       '#common-visibility-overview',
     )
-    expect(screen.getByText('Simultaneously visible', { selector: '.target-result-topline' })).toBeInTheDocument()
     const targetCard = screen.getByRole('tab', { name: /3C123/ })
-    expect(within(targetCard).getByText('Longest common visibility within window')).toBeInTheDocument()
+    expect(within(targetCard).getByText('Maximum Altitude 23.0°')).toBeInTheDocument()
+    expect(within(targetCard).getByText('Longest Common Window')).toBeInTheDocument()
     expect(within(targetCard).getByText('15 min')).toBeInTheDocument()
     const detailPanel = screen.getByRole('tabpanel', { name: '3C123 altitude chart' })
     const durationMetric = within(detailPanel)
-      .getByText('Longest Common Visibility Within Window')
+      .getByText('Longest Common Window')
       .closest('.duration-metric')
     expect(durationMetric).toHaveTextContent('15 min')
-    expect(durationMetric).toHaveTextContent('Sample-based')
-    expect(durationMetric).toHaveTextContent('Reaches window boundary · outside window not calculated')
-    expect(detailPanel).toHaveTextContent('This does not guarantee uninterrupted visibility between samples')
+    expect(detailPanel).toHaveTextContent('Target: 3C123')
+    expect(detailPanel).not.toHaveTextContent('Sample-based')
+    expect(detailPanel).not.toHaveTextContent('Reaches window boundary')
+    expect(detailPanel).not.toHaveTextContent('Visibility Criteria')
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
     const [url, init] = fetchMock.mock.calls[0]
@@ -574,11 +575,11 @@ describe('상호 가시성 인터페이스', () => {
     await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     const targetCard = await screen.findByRole('tab', { name: /3C123/ })
-    expect(targetCard).toHaveTextContent('Single sample')
-    expect(targetCard).toHaveTextContent('Duration undetermined')
+    expect(targetCard).toHaveTextContent('0 min')
+    expect(targetCard).not.toHaveTextContent('Duration undetermined')
     const detailPanel = screen.getByRole('tabpanel', { name: '3C123 altitude chart' })
-    expect(detailPanel.querySelector('.duration-metric')).toHaveTextContent('Single sample')
-    expect(detailPanel.querySelector('.duration-metric')).toHaveTextContent('Duration undetermined')
+    expect(detailPanel.querySelector('.duration-metric')).toHaveTextContent('0 min')
+    expect(detailPanel.querySelector('.duration-metric')).not.toHaveTextContent('Duration undetermined')
   })
 
   it('중심 시각에 보이지 않아도 시간창 안에 가시 샘플이 있으면 개요에 표시한다', async () => {
@@ -606,8 +607,8 @@ describe('상호 가시성 인터페이스', () => {
     expect(within(overview as HTMLElement).getByText('1 / 1 plotted')).toBeInTheDocument()
     expect(within(overview as HTMLElement).getByText('3C123', { selector: '.legend-item' })).toBeInTheDocument()
     expect(within(overview as HTMLElement).getByRole('img', {
-      name: /Altitude–time overview of sampled simultaneously visible targets/,
-    })).toHaveAccessibleDescription(/one or more computed samples in the selected time window/)
+      name: /Altitude–time overview of simultaneously visible targets/,
+    })).toHaveAccessibleDescription(/from 0 to 90 degrees in UTC/)
   })
 
   it('Fushan을 포함하면 세 관측지를 요청하고 세 위치 곡선을 표시한다', async () => {
@@ -620,7 +621,7 @@ describe('상호 가시성 인터페이스', () => {
     )
     render(<App />)
 
-    await user.click(screen.getByLabelText('Include Taiwan - Fushan in the observation'))
+    await user.click(screen.getByLabelText('Include Fushan (Taiwan) in the observation'))
     await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
@@ -634,7 +635,7 @@ describe('상호 가시성 인터페이스', () => {
       longitude_deg: 121.5816388889,
       elevation_m: 0,
     })
-    expect(await screen.findAllByText('Taiwan - Fushan', { selector: '.legend-item' })).toHaveLength(2)
+    expect(await screen.findAllByText('Fushan (Taiwan)', { selector: '.legend-item' })).toHaveLength(2)
   })
 
   it('제외한 관측지의 잘못된 입력은 선택된 관측지 계산을 막지 않는다', async () => {
@@ -647,14 +648,14 @@ describe('상호 가시성 인터페이스', () => {
     )
     render(<App />)
 
-    await user.click(screen.getByLabelText('Include Taiwan - Fushan in the observation'))
+    await user.click(screen.getByLabelText('Include Fushan (Taiwan) in the observation'))
     const fushanLatitude = document.querySelector('#location-2-latitude') as HTMLInputElement
     expect(fushanLatitude).toBeEnabled()
     await user.clear(fushanLatitude)
     await user.type(fushanLatitude, '91')
     expect(fushanLatitude).toBeInvalid()
 
-    await user.click(screen.getByLabelText('Include Taiwan - Fushan in the observation'))
+    await user.click(screen.getByLabelText('Include Fushan (Taiwan) in the observation'))
     expect(fushanLatitude).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
@@ -688,7 +689,7 @@ describe('상호 가시성 인터페이스', () => {
     )
     render(<App />)
 
-    await user.click(screen.getByLabelText('Include Kor - Pyeongchang in the observation'))
+    await user.click(screen.getByLabelText('Include Pyeongchang (Kor) in the observation'))
     await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     expect(await screen.findByRole('img', { name: /3C123 altitude–time chart/ })).toBeInTheDocument()
@@ -700,11 +701,11 @@ describe('상호 가시성 인터페이스', () => {
     ])
     const detailChart = screen.getByRole('tabpanel', { name: /3C123 altitude chart/ })
     expect(detailChart.querySelectorAll('.legend-line')).toHaveLength(1)
-    expect(detailChart).toHaveTextContent('Aus - Narrabri')
-    expect(detailChart).not.toHaveTextContent('Kor - Pyeongchang')
-    expect(detailChart).not.toHaveTextContent('Taiwan - Fushan')
+    expect(detailChart).toHaveTextContent('Narrabri (Aus)')
+    expect(detailChart).not.toHaveTextContent('Pyeongchang (Kor)')
+    expect(detailChart).not.toHaveTextContent('Fushan (Taiwan)')
 
-    await user.click(screen.getByLabelText('Include Taiwan - Fushan in the observation'))
+    await user.click(screen.getByLabelText('Include Fushan (Taiwan) in the observation'))
     expect(screen.queryByRole('img', { name: /3C123 altitude–time chart/ })).not.toBeInTheDocument()
     expect(screen.getByText('Simultaneously Visible Target Search')).toBeInTheDocument()
   })
@@ -714,8 +715,8 @@ describe('상호 가시성 인터페이스', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
     render(<App />)
 
-    await user.click(screen.getByLabelText('Include Aus - Narrabri in the observation'))
-    await user.click(screen.getByLabelText('Include Kor - Pyeongchang in the observation'))
+    await user.click(screen.getByLabelText('Include Narrabri (Aus) in the observation'))
+    await user.click(screen.getByLabelText('Include Pyeongchang (Kor) in the observation'))
     await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Select at least one observation site')
@@ -738,7 +739,7 @@ describe('상호 가시성 인터페이스', () => {
     await user.type(stepInput, '180')
     await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('produce only one sample')
+    expect(await screen.findByRole('alert')).toHaveTextContent('produce fewer than two time points')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

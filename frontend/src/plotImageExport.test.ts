@@ -84,13 +84,13 @@ describe('plotImageExport', () => {
     vi.unstubAllGlobals()
   })
 
-  it('creates a self-contained 2x PNG with a dark background and no transient overlays', async () => {
+  it('creates a self-contained 2x PNG with a white background and no transient overlays', async () => {
     const result = await svgToPngBlob(createSvg())
 
     expect(result.type).toBe('image/png')
     expect(renderedCanvasSize.width).toBe(1840)
     expect(renderedCanvasSize.height).toBe(764)
-    expect(canvasContext.fillStyle).toBe('#07111f')
+    expect(canvasContext.fillStyle).toBe('#ffffff')
     expect(fillRect).toHaveBeenCalledWith(0, 0, 1840, 764)
     expect(setTransform).toHaveBeenCalledWith(2, 0, 0, 2, 0, 0)
     expect(drawImage).toHaveBeenCalledWith(expect.any(SuccessfulImage), 0, 0, 920, 382)

@@ -13,10 +13,7 @@ import type {
   VisibilityResponse,
   VisibilityTarget,
 } from './types'
-import {
-  getLongestCommonVisibility,
-  VISIBILITY_DURATION_NOTE,
-} from './visibilityDuration'
+import { getLongestCommonVisibility } from './visibilityDuration'
 
 interface CatalogTarget {
   id: string
@@ -40,21 +37,21 @@ const CATALOG_TARGETS: CatalogTarget[] = [
 const INITIAL_LOCATIONS: ObserverLocation[] = [
   {
     id: 'narrabri',
-    name: 'Aus - Narrabri',
+    name: 'Narrabri (Aus)',
     latitude_deg: -30.31667,
     longitude_deg: 149.76667,
     elevation_m: 237,
   },
   {
     id: 'pyeongchang',
-    name: 'Kor - Pyeongchang',
+    name: 'Pyeongchang (Kor)',
     latitude_deg: 37.36889,
     longitude_deg: 128.39028,
     elevation_m: 700,
   },
   {
     id: 'fushan',
-    name: 'Taiwan - Fushan',
+    name: 'Fushan (Taiwan)',
     latitude_deg: 24.7564722222,
     longitude_deg: 121.5816388889,
     elevation_m: 0,
@@ -290,7 +287,6 @@ function ResultSkeleton() {
         <span />
       </span>
       <h2>Overlaying the selected skies</h2>
-      <p>Transforming each site's coordinates and calculating shared visibility samples.</p>
       <div className="skeleton-chart" aria-hidden="true">
         <i />
         <i />
@@ -328,23 +324,12 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   )
 }
 
-function EmptyState({
-  minimumAltitude,
-  locationCount,
-}: {
-  minimumAltitude: number
-  locationCount: number
-}) {
+function EmptyState() {
   return (
     <div className="result-state empty-state" role="status">
       <span className="state-symbol" aria-hidden="true">0</span>
       <p className="eyebrow">0 simultaneously visible targets</p>
       <h2>No targets are shared within this time window</h2>
-      <p>
-        None of the selected targets has a sample at or above {minimumAltitude}° at every selected site
-        ({locationCount} {locationCount === 1 ? 'site' : 'sites'} selected).
-        Try widening the time range or lowering the minimum altitude.
-      </p>
     </div>
   )
 }
@@ -369,12 +354,6 @@ function TargetResultCard({
     sampleCount,
   )
   const durationLabel = longestVisibility?.label ?? '—'
-  const durationQualifier = longestVisibility
-    ? [
-        longestVisibility.label === 'Single sample' ? 'Duration undetermined' : null,
-        longestVisibility.boundaryLabel,
-      ].filter(Boolean).join(' · ')
-    : null
   return (
     <button
       type="button"
@@ -383,24 +362,13 @@ function TargetResultCard({
       className={`target-result-card ${selected ? 'is-selected' : ''}`}
       onClick={onSelect}
     >
-      <span className="target-result-topline">
-        <span className="visibility-dot" aria-hidden="true" />
-        Simultaneously visible
-      </span>
       <strong>{target.name}</strong>
       <span className="target-card-meta">
-        {target.visible_intervals.length} sample group{target.visible_intervals.length === 1 ? '' : 's'}
-        <i aria-hidden="true" />
-        Maximum common altitude {target.max_common_altitude_deg?.toFixed(1) ?? '—'}°
+        Maximum Altitude {target.max_common_altitude_deg?.toFixed(1) ?? '—'}°
       </span>
-      <span
-        className="target-duration-metric"
-        title={VISIBILITY_DURATION_NOTE}
-        aria-describedby="target-duration-note"
-      >
-        <span>Longest common visibility within window</span>
+      <span className="target-duration-metric">
+        <span>Longest Common Window</span>
         <strong>{durationLabel}</strong>
-        <small>Sample-based{durationQualifier ? ` · ${durationQualifier}` : ''}</small>
       </span>
       {alias && <span className="target-alias">{alias}</span>}
     </button>
@@ -434,12 +402,7 @@ function Results({
   }
 
   if (!target) {
-    return (
-      <EmptyState
-        minimumAltitude={minimumAltitude}
-        locationCount={response.locations.length || 1}
-      />
-    )
+    return <EmptyState />
   }
 
   const longestVisibility = getLongestCommonVisibility(
@@ -448,20 +411,13 @@ function Results({
     response.times_utc.length,
   )
   const durationLabel = longestVisibility?.label ?? '—'
-  const durationQualifier = longestVisibility
-    ? [
-        longestVisibility.label === 'Single sample' ? 'Duration undetermined' : null,
-        longestVisibility.boundaryLabel,
-      ].filter(Boolean).join(' · ')
-    : null
 
   return (
     <div className="results-content">
       <header className="results-header">
         <div>
-          <p className="eyebrow">Calculation Results · Sample-based</p>
           <h2>
-            Simultaneously visible <span>{visibleTargets.length}</span>
+            Simultaneously Visible Targets <span>{visibleTargets.length}</span>
             <small>/ {response.targets.length}</small>
           </h2>
         </div>
@@ -487,18 +443,11 @@ function Results({
           />
         ))}
       </div>
-      <p id="target-duration-note" className="target-duration-note">
-        Sample-based: observable time is the elapsed duration between the first and last samples in a consecutive group.
-        It does not guarantee uninterrupted visibility between samples.
-      </p>
 
       <section className="chart-panel" role="tabpanel" aria-label={`${target.name} altitude chart`}>
         <header className="chart-heading">
           <div>
-            <span className="object-type">
-              {target.catalog === 'lofar_dr3' ? 'LoTSS DR3 SOURCE · 144 MHz' : 'FIXED ICRS TARGET'}
-            </span>
-            <h3>{target.name}</h3>
+            <h3>Target: {target.name}</h3>
             {target.aliases.length > 0 && (
               <p className="alias-list">{target.aliases.join(' · ')}</p>
             )}
@@ -533,21 +482,12 @@ function Results({
               <dd>{formatCoordinate(target.dec_deg, 'dec')}</dd>
             </div>
             <div>
-              <dt>Maximum Common Altitude</dt>
+              <dt>Maximum Altitude</dt>
               <dd>{target.max_common_altitude_deg?.toFixed(1) ?? '—'}°</dd>
             </div>
-            <div
-              className="duration-metric"
-              title={VISIBILITY_DURATION_NOTE}
-              aria-describedby="duration-method-note"
-            >
-              <dt>Longest Common Visibility Within Window</dt>
-              <dd>
-                {durationLabel}
-                <small>
-                  Sample-based{durationQualifier ? ` · ${durationQualifier}` : ''}
-                </small>
-              </dd>
+            <div className="duration-metric">
+              <dt>Longest Common Window</dt>
+              <dd>{durationLabel}</dd>
             </div>
           </dl>
         </header>
@@ -558,15 +498,6 @@ function Results({
           times={response.times_utc}
           minimumAltitude={minimumAltitude}
         />
-
-        <div id="duration-method-note" className="science-note">
-          <span aria-hidden="true">i</span>
-          <p>
-            <strong>Visibility Criteria</strong> Samples and consecutive sample groups are highlighted when every selected site has a geometric altitude of at least {minimumAltitude}° ({target.location_series.length} {target.location_series.length === 1 ? 'site' : 'sites'} selected).
-            The longest interval is the elapsed time between the first and last samples in the longest group. A single visible sample has an undetermined duration.
-            This does not guarantee uninterrupted visibility between samples. Atmospheric refraction (pressure=0), terrain, weather, and daylight are not included.
-          </p>
-        </div>
       </section>
 
       <section
@@ -576,12 +507,7 @@ function Results({
       >
         <header className="chart-heading overview-heading">
           <div>
-            <span className="object-type">TARGETS VISIBLE WITHIN THE TIME WINDOW</span>
-            <h3 id="overview-title">Overview of Targets Visible Within the Time Window</h3>
-            <p>
-              Compare full altitude–time tracks for selected catalog targets that reach at least {minimumAltitude}°
-              at every selected site in one or more samples within the full time window.
-            </p>
+            <h3 id="overview-title">Altitude–Time Overview</h3>
           </div>
           <span className="overview-count" aria-live="polite">
             {plottedTargets.length} / {visibleTargets.length} plotted
@@ -591,7 +517,6 @@ function Results({
         <fieldset className="overview-target-selector">
           <legend>Targets to Plot in the Overview</legend>
           <div className="overview-selector-actions">
-            <span>Only targets with an observable interval can be selected.</span>
             <div>
               <button
                 type="button"
@@ -636,7 +561,7 @@ function Results({
                   <span className="overview-option-dot" aria-hidden="true" />
                   <span>
                     <strong>{candidate.name}</strong>
-                    <small>Longest common visibility {longest?.label ?? '—'}</small>
+                    <small>Longest Common Window {longest?.label ?? '—'}</small>
                   </span>
                 </label>
               )
@@ -650,15 +575,6 @@ function Results({
           centerTime={response.metadata.center_time_utc}
           minimumAltitude={minimumAltitude}
         />
-
-        <div className="science-note">
-          <span aria-hidden="true">i</span>
-          <p>
-            <strong>How to Read This</strong> Listed targets reach at least {minimumAltitude}° at every selected site in one or more samples within the calculation window.
-            Only checked targets appear in the chart, legend, and data table. This does not mean they are visible throughout the entire window.
-            The vertical reference line marks the sample nearest the entered central UTC time.
-          </p>
-        </div>
       </section>
     </div>
   )
@@ -808,7 +724,7 @@ export default function App() {
       Math.floor((hoursAfter * 60) / stepMinutes) +
       1
     if (sampleCount < 2) {
-      setError('This time range and calculation interval produce only one sample. Adjust them to produce at least two samples.')
+      setError('This time range and calculation interval produce fewer than two time points. Adjust either value.')
       setStatus('error')
       return
     }
@@ -1143,9 +1059,6 @@ export default function App() {
         onGoToVisibility={() => setActiveTab('visibility')}
       />
 
-      <footer className="footer-note">
-        Reference frame: ICRS · Altitude frame: AltAz · Results are intended for observation-planning reference.
-      </footer>
     </div>
   )
 }

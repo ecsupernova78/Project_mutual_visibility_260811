@@ -10,8 +10,8 @@ describe('dynamic catalog target colors', () => {
     expect(getTargetColor(targetId, 1)).toBe(getTargetColor(targetId, 24))
   })
 
-  it('preserves the version-controlled colors for the original targets', () => {
-    expect(getTargetColor('3c123', 20)).toBe('#62dbe7')
-    expect(getTargetColor('3c273', 0)).toBe('#ffbd73')
+  it('preserves the high-contrast colors for the original targets', () => {
+    expect(getTargetColor('3c123', 20)).toBe('#0b7f8c')
+    expect(getTargetColor('3c273', 0)).toBe('#ad5b00')
   })
 })

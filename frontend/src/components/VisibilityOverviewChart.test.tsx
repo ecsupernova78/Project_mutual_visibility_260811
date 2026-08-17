@@ -35,7 +35,7 @@ describe('VisibilityOverviewChart', () => {
       dec_deg: 20,
       location_series: [{
         location_id: 'narrabri',
-        location_name: 'Narrabri',
+        location_name: 'Narrabri (Aus)',
         altitudes_deg: [20, 25, 30],
       }],
       simultaneous_mask: [true, true, true],
@@ -98,7 +98,7 @@ describe('VisibilityOverviewChart', () => {
       dec_deg: 20,
       location_series: [{
         location_id: 'narrabri',
-        location_name: 'Aus - Narrabri',
+        location_name: 'Narrabri (Aus)',
         altitudes_deg: [20, 25, 30],
       }],
       simultaneous_mask: [true, true, true],
@@ -119,10 +119,13 @@ describe('VisibilityOverviewChart', () => {
       />,
     )
 
-    fireEvent.focus(screen.getByRole('slider', { name: 'Explore time samples for all targets' }))
+    fireEvent.focus(screen.getByRole('slider', { name: 'Overview time (UTC)' }))
 
     expect(screen.getByText('+13 more targets · see table')).toBeInTheDocument()
     expect(container.querySelector('.overview-tooltip rect')).toHaveAttribute('height', '305')
+    expect(container.querySelector('.plot-background')).toHaveAttribute('fill', '#ffffff')
+    expect(container.querySelector('.chart-grid')).toHaveAttribute('fill', '#111111')
+    expect(container.querySelector('.overview-tooltip')).toHaveAttribute('fill', '#111111')
     expect(container.querySelectorAll('.overview-tooltip .tooltip-value')).toHaveLength(13)
   })
 
@@ -135,7 +138,7 @@ describe('VisibilityOverviewChart', () => {
       dec_deg: 41.5117,
       location_series: [{
         location_id: 'narrabri',
-        location_name: 'Aus - Narrabri',
+        location_name: 'Narrabri (Aus)',
         altitudes_deg: [-30, 45],
       }],
       simultaneous_mask: [false, true],
@@ -158,10 +161,10 @@ describe('VisibilityOverviewChart', () => {
     expect(yTickLabels).toEqual(['0°', '15°', '30°', '45°', '60°', '75°', '90°'])
 
     const altitudePath = container.querySelector('.overview-altitude-line')
-    expect(altitudePath).toHaveAttribute('d', 'M58.00,486.67 L896.00,200.00')
+    expect(altitudePath).toHaveAttribute('d', 'M68.00,486.67 L896.00,200.00')
     expect(altitudePath?.parentElement).toHaveAttribute('clip-path', expect.stringMatching(/^url\(#overview-/))
     expect(container.querySelector('desc')).toHaveTextContent(
-      'The plotted altitude range is 0 to 90 degrees',
+      'Altitude from 0 to 90 degrees',
     )
   })
 })

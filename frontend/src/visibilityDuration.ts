@@ -1,8 +1,5 @@
 import type { VisibleInterval } from './types'
 
-export const VISIBILITY_DURATION_NOTE =
-  'Elapsed time between the first and last timestamps of consecutive computed samples. It does not guarantee visibility at every instant between samples or outside the calculation window.'
-
 export interface LongestCommonVisibility {
   interval: VisibleInterval
   elapsedMinutes: number
@@ -56,8 +53,6 @@ export function getLongestCommonVisibility(
     }
   }
 
-  const isSingleSample =
-    longestInterval.sample_count <= 1 || longestInterval.start_index === longestInterval.end_index
   const boundaryLabel = Number.isInteger(sampleCount)
     ? intervals.reduce<string | null>((warning, interval) => {
         if (warning) return warning
@@ -71,7 +66,7 @@ export function getLongestCommonVisibility(
   return {
     interval: longestInterval,
     elapsedMinutes: longestMinutes,
-    label: isSingleSample ? 'Single sample' : formatDuration(longestMinutes),
+    label: formatDuration(longestMinutes),
     boundaryLabel,
   }
 }

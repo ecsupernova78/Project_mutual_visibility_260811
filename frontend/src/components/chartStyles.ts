@@ -5,9 +5,9 @@ export interface SiteChartStyle {
 }
 
 const SITE_STYLES: Record<string, SiteChartStyle> = {
-  narrabri: { color: '#62dbe7', kind: 'solid' },
-  pyeongchang: { color: '#ffbd73', dash: '9 6', kind: 'dashed' },
-  fushan: { color: '#b69cff', dash: '2 5', kind: 'dotted' },
+  narrabri: { color: '#0b7f8c', kind: 'solid' },
+  pyeongchang: { color: '#ad5b00', dash: '9 6', kind: 'dashed' },
+  fushan: { color: '#7854bd', dash: '2 5', kind: 'dotted' },
 }
 
 const FALLBACK_STYLES: SiteChartStyle[] = [
@@ -21,26 +21,26 @@ export function getSiteChartStyle(locationId: string, fallbackIndex = 0) {
 }
 
 const TARGET_COLORS: Record<string, string> = {
-  '3c123': '#62dbe7',
-  '3c273': '#ffbd73',
-  '3c433': '#b69cff',
-  '3c295': '#7de1ca',
-  '3c134': '#ff8f95',
+  '3c123': '#0b7f8c',
+  '3c273': '#ad5b00',
+  '3c433': '#7854bd',
+  '3c295': '#16785f',
+  '3c134': '#b53a4d',
 }
 
 const CATALOG_TARGET_COLORS = [
-  '#58d6e8',
-  '#f4ae6a',
-  '#a995f5',
-  '#75d9bc',
-  '#f58291',
-  '#76a9ff',
-  '#e6ca6d',
-  '#d890dc',
-  '#8dd36f',
-  '#ef8fcb',
-  '#77c3a8',
-  '#eea180',
+  '#0b7f8c',
+  '#ad5b00',
+  '#7854bd',
+  '#16785f',
+  '#b53a4d',
+  '#3d72c9',
+  '#80720b',
+  '#9c4da2',
+  '#498431',
+  '#a13d7e',
+  '#357963',
+  '#a75438',
 ]
 
 export function getTargetColor(targetId: string, _fallbackIndex = 0) {

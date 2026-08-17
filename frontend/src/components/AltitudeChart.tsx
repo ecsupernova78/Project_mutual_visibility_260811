@@ -12,7 +12,7 @@ interface AltitudeChartProps {
 
 const WIDTH = 920
 const HEIGHT = 382
-const MARGIN = { top: 24, right: 24, bottom: 54, left: 58 }
+const MARGIN = { top: 24, right: 24, bottom: 54, left: 68 }
 const PLOT_WIDTH = WIDTH - MARGIN.left - MARGIN.right
 const PLOT_HEIGHT = HEIGHT - MARGIN.top - MARGIN.bottom
 const Y_MIN = 0
@@ -139,7 +139,7 @@ export function AltitudeChart({
         </span>
         <span className="legend-item">
           <span className="legend-window" aria-hidden="true" />
-          Samples meeting the simultaneous-visibility threshold
+          Common visibility window
         </span>
       </div>
 
@@ -158,13 +158,12 @@ export function AltitudeChart({
         >
           <title id={`${patternId}-title`}>{target.name} altitude–time chart</title>
           <desc id={`${patternId}-description`}>
-            Compares geometric altitude at {target.location_series.length} observing {target.location_series.length === 1 ? 'site' : 'sites'} over UTC
-            against an altitude threshold of {minimumAltitude} degrees. The plotted altitude range is 0 to 90 degrees;
-            negative altitudes below the horizon are clipped from the chart.
+            Altitude from 0 to 90 degrees in UTC for {target.location_series.length} observing {target.location_series.length === 1 ? 'site' : 'sites'}.
           </desc>
+          <rect width={WIDTH} height={HEIGHT} fill="#ffffff" className="plot-background" />
           <defs>
             <pattern id={patternId} width="8" height="8" patternUnits="userSpaceOnUse">
-              <path d="M0 8 8 0" stroke="#7de1ca" strokeOpacity=".13" strokeWidth="2" />
+              <path d="M0 8 8 0" stroke="#16785f" strokeOpacity=".22" strokeWidth="2" />
             </pattern>
             <clipPath id={`${patternId}-clip`}>
               <rect
@@ -176,7 +175,7 @@ export function AltitudeChart({
             </clipPath>
           </defs>
 
-          <g className="chart-grid">
+          <g className="chart-grid" fill="#111111">
             {Y_TICKS.map((tick) => (
               <g key={tick}>
                 <line
@@ -260,11 +259,12 @@ export function AltitudeChart({
           </g>
 
           <text
-            x={17}
+            x={20}
             y={MARGIN.top + PLOT_HEIGHT / 2}
             textAnchor="middle"
-            transform={`rotate(-90 17 ${MARGIN.top + PLOT_HEIGHT / 2})`}
+            transform={`rotate(-90 20 ${MARGIN.top + PLOT_HEIGHT / 2})`}
             className="axis-title"
+            fill="#111111"
           >
             Geometric altitude
           </text>
@@ -273,12 +273,13 @@ export function AltitudeChart({
             y={HEIGHT - 6}
             textAnchor="middle"
             className="axis-title"
+            fill="#111111"
           >
             Time (UTC)
           </text>
 
           {tooltipVisible && safeActiveIndex !== null && activeX !== null && (
-            <g className="chart-tooltip" pointerEvents="none">
+            <g className="chart-tooltip" pointerEvents="none" fill="#111111">
               {target.location_series.map((series, index) => {
                 const altitude = series.altitudes_deg[safeActiveIndex]
                 return Number.isFinite(altitude) && altitude >= Y_MIN && altitude <= Y_MAX ? (
@@ -288,7 +289,7 @@ export function AltitudeChart({
                     cy={y(altitude)}
                     r="5"
                     fill={getSiteChartStyle(series.location_id, index).color}
-                    stroke="#07111f"
+                    stroke="#111111"
                     strokeWidth="2"
                   />
                 ) : null
@@ -308,7 +309,7 @@ export function AltitudeChart({
                   key={series.location_id}
                   x={tooltipX + 13}
                   y={78 + index * 21}
-                  fill={getSiteChartStyle(series.location_id, index).color}
+                  fill="#111111"
                   className="tooltip-value"
                 >
                   {series.location_name}: {series.altitudes_deg[safeActiveIndex]?.toFixed(1) ?? '—'}°
@@ -332,22 +333,20 @@ export function AltitudeChart({
       </div>
 
       <label className="chart-scrubber">
-        <span>Explore time samples</span>
+        <span>Time (UTC)</span>
         <input
           type="range"
           min={0}
           max={pointCount - 1}
           step={1}
           value={safeActiveIndex ?? 0}
-          aria-label="Explore time samples"
+          aria-label={`${target.name} time (UTC)`}
           aria-valuetext={`${formatUtcTick(times[safeActiveIndex ?? 0], true)} UTC`}
           onFocus={() => setActiveIndex((current) => current ?? 0)}
           onChange={(event) => setActiveIndex(Number(event.currentTarget.value))}
         />
         <output>{formatUtcTick(times[safeActiveIndex ?? 0], true)} UTC</output>
       </label>
-
-      <p className="chart-hint">Point at the chart or use the time slider to inspect sample values.</p>
 
       <table className="sr-only">
         <caption>{target.name} altitude data by time in UTC</caption>
