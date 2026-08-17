@@ -185,8 +185,8 @@ export function AltitudeChart({
                   y2={y(tick)}
                   className={tick === 0 ? 'horizon-line' : 'grid-line'}
                 />
-                <text x={MARGIN.left - 12} y={y(tick) + 4} textAnchor="end">
-                  {tick}°
+                <text x={MARGIN.left - 12} y={y(tick) + 5} textAnchor="end">
+                  {tick}
                 </text>
               </g>
             ))}
@@ -266,7 +266,7 @@ export function AltitudeChart({
             className="axis-title"
             fill="#111111"
           >
-            Geometric altitude
+            Altitude [°]
           </text>
           <text
             x={MARGIN.left + PLOT_WIDTH / 2}

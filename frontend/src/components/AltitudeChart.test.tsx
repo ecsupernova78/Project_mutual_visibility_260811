@@ -80,7 +80,8 @@ describe('AltitudeChart', () => {
     const yTickLabels = [...container.querySelectorAll('.chart-grid > g > text')]
       .slice(0, 7)
       .map((label) => label.textContent)
-    expect(yTickLabels).toEqual(['0°', '15°', '30°', '45°', '60°', '75°', '90°'])
+    expect(yTickLabels).toEqual(['0', '15', '30', '45', '60', '75', '90'])
+    expect(screen.getByText('Altitude [°]')).toHaveClass('axis-title')
 
     const altitudePath = container.querySelector('.altitude-line')
     expect(altitudePath).toHaveAttribute('d', 'M68.00,429.33 L896.00,176.00')

@@ -206,7 +206,7 @@ export function VisibilityOverviewChart({
                   y2={y(tick)}
                   className={tick === 0 ? 'horizon-line' : 'grid-line'}
                 />
-                <text x={MARGIN.left - 12} y={y(tick) + 4} textAnchor="end">{tick}°</text>
+                <text x={MARGIN.left - 12} y={y(tick) + 5} textAnchor="end">{tick}</text>
               </g>
             ))}
             {xTickIndexes.map((index) => (
@@ -273,7 +273,7 @@ export function VisibilityOverviewChart({
             className="axis-title"
             fill="#111111"
           >
-            Geometric altitude
+            Altitude [°]
           </text>
           <text x={MARGIN.left + PLOT_WIDTH / 2} y={HEIGHT - 7} textAnchor="middle" className="axis-title" fill="#111111">
             Time (UTC)

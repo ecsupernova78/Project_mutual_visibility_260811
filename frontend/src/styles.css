@@ -401,8 +401,8 @@ fieldset:disabled { opacity: .68; }
 .chart-scrubber { display: grid; grid-template-columns: auto minmax(120px, 1fr) auto; align-items: center; gap: 10px; margin: 8px 8px 0; color: #71899b; font: 8px var(--mono); }
 .chart-scrubber input { width: 100%; accent-color: var(--cyan); cursor: pointer; }
 .chart-scrubber output { min-width: 90px; color: #9db1bf; text-align: right; }
-.chart-grid text, .axis-title { fill: #111; font: 12px var(--mono); }
-.axis-title { font-size: 14px; font-weight: 600; letter-spacing: .025em; }
+.chart-grid text, .axis-title { fill: #111; font: 16px var(--mono); }
+.axis-title { font-size: 20px; font-weight: 600; letter-spacing: .025em; }
 .grid-line { stroke: #d9dfe4; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .grid-line.vertical { stroke-dasharray: 2 5; }
 .horizon-line { stroke: #4b5563; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
