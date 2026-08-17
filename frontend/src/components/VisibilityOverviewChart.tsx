@@ -3,6 +3,12 @@ import { useId, useRef, useState, type CSSProperties, type PointerEvent } from '
 import type { VisibilityTarget } from '../types'
 import { getSiteChartStyle, getTargetColor } from './chartStyles'
 import { PlotExportControls } from './PlotExportControls'
+import {
+  fitSvgLegendLabel,
+  layoutSvgLegendGrid,
+  SVG_LEGEND_FONT_SIZE,
+  SVG_LEGEND_ROW_HEIGHT,
+} from './svgLegendLayout'
 
 interface VisibilityOverviewChartProps {
   targets: VisibilityTarget[]
@@ -11,15 +17,29 @@ interface VisibilityOverviewChartProps {
   minimumAltitude: number
 }
 
-const WIDTH = 920
-const HEIGHT = 430
-const MARGIN = { top: 28, right: 24, bottom: 58, left: 68 }
-const PLOT_WIDTH = WIDTH - MARGIN.left - MARGIN.right
-const PLOT_HEIGHT = HEIGHT - MARGIN.top - MARGIN.bottom
+const WIDTH = 1040
+const PLOT_HEIGHT = 344
+const MARGIN_LEFT = 92
+const MARGIN_RIGHT = 40
+const MARGIN_BOTTOM = 78
 const Y_MIN = 0
 const Y_MAX = 90
 const Y_TICKS = [0, 15, 30, 45, 60, 75, 90]
 const MAX_TOOLTIP_TARGETS = 12
+
+interface TargetLegendEntry {
+  key: string
+  label: string
+  color: string
+}
+
+interface SiteLegendEntry {
+  key: string
+  label: string
+  kind: 'site' | 'reference' | 'threshold'
+  locationId?: string
+  siteIndex?: number
+}
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(Math.max(value, minimum), maximum)
@@ -76,11 +96,69 @@ export function VisibilityOverviewChart({
   const rawId = useId()
   const chartId = `overview-${rawId.replace(/:/g, '')}`
   const pointCount = times.length
+
+  if (pointCount === 0 || targets.length === 0) {
+    return <div className="chart-empty">Select at least one target to plot.</div>
+  }
+
+  const plotWidth = WIDTH - MARGIN_LEFT - MARGIN_RIGHT
+  const targetLegendEntries: TargetLegendEntry[] = targets.map((target, index) => ({
+    key: target.id,
+    label: target.name,
+    color: getTargetColor(target.id, index),
+  }))
+  const targetLegendFirstBaselineY = 58
+  const targetLegendLayout = layoutSvgLegendGrid(targetLegendEntries, {
+    startX: MARGIN_LEFT,
+    firstBaselineY: targetLegendFirstBaselineY,
+    availableWidth: plotWidth,
+    columns: 2,
+  })
+  const targetLegendLastBaselineY =
+    targetLegendFirstBaselineY +
+    Math.max(targetLegendLayout.rowCount - 1, 0) * SVG_LEGEND_ROW_HEIGHT
+  const siteLegendTitleY = targetLegendLastBaselineY + 36
+  const siteLegendFirstBaselineY = siteLegendTitleY + 30
+  const siteLegendEntries: SiteLegendEntry[] = [
+    ...targets[0].location_series.map((series, index) => ({
+      key: `site-${series.location_id}`,
+      label: series.location_name,
+      kind: 'site' as const,
+      locationId: series.location_id,
+      siteIndex: index,
+    })),
+    {
+      key: 'reference-utc',
+      label: 'Reference UTC',
+      kind: 'reference',
+    },
+    {
+      key: 'altitude-threshold',
+      label: `Altitude threshold ${minimumAltitude}°`,
+      kind: 'threshold',
+    },
+  ]
+  const siteLegendLayout = layoutSvgLegendGrid(siteLegendEntries, {
+    startX: MARGIN_LEFT,
+    firstBaselineY: siteLegendFirstBaselineY,
+    availableWidth: plotWidth,
+  })
+  const marginTop =
+    siteLegendFirstBaselineY +
+    Math.max(siteLegendLayout.rowCount - 1, 0) * SVG_LEGEND_ROW_HEIGHT +
+    34
+  const margin = {
+    top: marginTop,
+    right: MARGIN_RIGHT,
+    bottom: MARGIN_BOTTOM,
+    left: MARGIN_LEFT,
+  }
+  const height = margin.top + PLOT_HEIGHT + margin.bottom
   const centerIndex = nearestTimeIndex(times, centerTime)
   const x = (index: number) =>
-    MARGIN.left + (pointCount <= 1 ? 0 : (index / (pointCount - 1)) * PLOT_WIDTH)
+    margin.left + (pointCount <= 1 ? 0 : (index / (pointCount - 1)) * plotWidth)
   const y = (altitude: number) =>
-    MARGIN.top + ((Y_MAX - altitude) / (Y_MAX - Y_MIN)) * PLOT_HEIGHT
+    margin.top + ((Y_MAX - altitude) / (Y_MAX - Y_MIN)) * PLOT_HEIGHT
 
   const paths = targets.flatMap((target, targetIndex) =>
     target.location_series.map((series, siteIndex) => {
@@ -106,7 +184,7 @@ export function VisibilityOverviewChart({
     const bounds = element.getBoundingClientRect()
     if (!bounds.width || pointCount === 0) return
     const svgX = ((clientX - bounds.left) / bounds.width) * WIDTH
-    const ratio = clamp((svgX - MARGIN.left) / PLOT_WIDTH, 0, 1)
+    const ratio = clamp((svgX - margin.left) / plotWidth, 0, 1)
     setActiveIndex(Math.round(ratio * Math.max(pointCount - 1, 0)))
   }
 
@@ -114,14 +192,11 @@ export function VisibilityOverviewChart({
     moveToIndex(event.clientX, event.currentTarget)
   }
 
-  if (pointCount === 0 || targets.length === 0) {
-    return <div className="chart-empty">Select at least one target to plot.</div>
-  }
-
   const safeActiveIndex = activeIndex === null ? null : clamp(activeIndex, 0, pointCount - 1)
   const activeX = safeActiveIndex === null ? null : x(safeActiveIndex)
   const tooltipWidth = 220
   const tooltipX = activeX !== null && activeX > WIDTH - 265 ? activeX - tooltipWidth - 12 : (activeX ?? 0) + 12
+  const tooltipY = margin.top + 12
   const tooltipTargets = targets.slice(0, MAX_TOOLTIP_TARGETS)
   const omittedTooltipTargets = targets.length - tooltipTargets.length
   const tooltipHeight = 45 + tooltipTargets.length * 20 + (omittedTooltipTargets > 0 ? 20 : 0)
@@ -136,43 +211,6 @@ export function VisibilityOverviewChart({
 
   return (
     <div className="overview-chart">
-      <div className="overview-legends">
-        <div className="chart-legend target-color-legend" aria-label="Target color legend">
-          <span className="legend-label">Target</span>
-          {targets.map((target, index) => (
-            <span className="legend-item" key={target.id}>
-              <span
-                className="legend-color-dot"
-                style={{ '--legend-color': getTargetColor(target.id, index) } as CSSProperties}
-                aria-hidden="true"
-              />
-              {target.name}
-            </span>
-          ))}
-        </div>
-        <div className="chart-legend site-pattern-legend" aria-label="Observing-site line-style legend">
-          <span className="legend-label">Observing site</span>
-          {targets[0]?.location_series.map((series, index) => (
-            <span className="legend-item" key={series.location_id}>
-              <span
-                className="legend-site-line"
-                data-dash={getSiteChartStyle(series.location_id, index).kind}
-                aria-hidden="true"
-              />
-              {series.location_name}
-            </span>
-          ))}
-          <span className="legend-item">
-            <span className="legend-center-line" aria-hidden="true" />
-            Reference UTC
-          </span>
-          <span className="legend-item">
-            <span className="legend-threshold" aria-hidden="true" />
-            Altitude threshold {minimumAltitude}°
-          </span>
-        </div>
-      </div>
-
       <PlotExportControls
         svgRef={svgRef}
         filename={`visibility-overview-altitude-time-${times[0]}-${times.at(-1) ?? times[0]}`}
@@ -182,7 +220,7 @@ export function VisibilityOverviewChart({
       <div className="chart-frame overview-chart-frame">
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          viewBox={`0 0 ${WIDTH} ${height}`}
           role="img"
           aria-labelledby={`${chartId}-title`}
           aria-describedby={`${chartId}-description`}
@@ -191,22 +229,140 @@ export function VisibilityOverviewChart({
           <desc id={`${chartId}-description`}>
             Altitude from 0 to 90 degrees in UTC for {targets.length} simultaneously visible {targets.length === 1 ? 'target' : 'targets'} at each selected observing site.
           </desc>
-          <rect width={WIDTH} height={HEIGHT} fill="#ffffff" className="plot-background" />
+          <rect width={WIDTH} height={height} fill="#ffffff" className="plot-background" />
           <clipPath id={`${chartId}-clip`}>
-            <rect x={MARGIN.left} y={MARGIN.top} width={PLOT_WIDTH} height={PLOT_HEIGHT} />
+            <rect x={margin.left} y={margin.top} width={plotWidth} height={PLOT_HEIGHT} />
           </clipPath>
+
+          <g
+            className="svg-chart-legend target-color-legend"
+            role="group"
+            aria-label="Target color legend"
+          >
+            <text
+              x={margin.left}
+              y={28}
+              className="svg-legend-title"
+              fontSize={SVG_LEGEND_FONT_SIZE}
+            >
+              Target
+            </text>
+            {targetLegendLayout.items.map(({ entry, x: legendX, y: legendY, textMaxWidth }) => {
+              const displayLabel = fitSvgLegendLabel(entry.label, textMaxWidth)
+              return (
+                <g className="svg-legend-entry" key={entry.key}>
+                  <circle
+                    cx={legendX + 10}
+                    cy={legendY - 6}
+                    r="7"
+                    fill={entry.color}
+                    style={{ '--legend-color': entry.color } as CSSProperties}
+                    className="legend-color-dot"
+                    aria-hidden="true"
+                  />
+                  <text
+                    x={legendX + 38}
+                    y={legendY}
+                    className="legend-item svg-legend-item-label"
+                    fontSize={SVG_LEGEND_FONT_SIZE}
+                    aria-label={entry.label}
+                  >
+                    <title>{entry.label}</title>
+                    {displayLabel}
+                  </text>
+                </g>
+              )
+            })}
+          </g>
+
+          <g
+            className="svg-chart-legend site-pattern-legend"
+            role="group"
+            aria-label="Observing-site line-style legend"
+          >
+            <text
+              x={margin.left}
+              y={siteLegendTitleY}
+              className="svg-legend-title"
+              fontSize={SVG_LEGEND_FONT_SIZE}
+            >
+              Observing site
+            </text>
+            {siteLegendLayout.items.map(({ entry, x: legendX, y: legendY, textMaxWidth }) => {
+              const displayLabel = fitSvgLegendLabel(entry.label, textMaxWidth)
+              const siteStyle = entry.kind === 'site'
+                ? getSiteChartStyle(entry.locationId ?? '', entry.siteIndex ?? 0)
+                : null
+
+              return (
+                <g className="svg-legend-entry" key={entry.key}>
+                  {entry.kind === 'site' && siteStyle && (
+                    <line
+                      x1={legendX}
+                      x2={legendX + 28}
+                      y1={legendY - 6}
+                      y2={legendY - 6}
+                      stroke="#4b5563"
+                      strokeWidth="3"
+                      strokeDasharray={siteStyle.dash}
+                      strokeLinecap="round"
+                      className="legend-site-line"
+                      data-dash={siteStyle.kind}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {entry.kind === 'reference' && (
+                    <line
+                      x1={legendX + 14}
+                      x2={legendX + 14}
+                      y1={legendY - 19}
+                      y2={legendY + 2}
+                      stroke="#111827"
+                      strokeWidth="2.5"
+                      strokeDasharray="3 4"
+                      className="legend-center-line"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {entry.kind === 'threshold' && (
+                    <line
+                      x1={legendX}
+                      x2={legendX + 28}
+                      y1={legendY - 6}
+                      y2={legendY - 6}
+                      stroke="#c3293a"
+                      strokeWidth="2.5"
+                      strokeDasharray="6 5"
+                      className="legend-threshold"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <text
+                    x={legendX + 38}
+                    y={legendY}
+                    className="legend-item svg-legend-item-label"
+                    fontSize={SVG_LEGEND_FONT_SIZE}
+                    aria-label={entry.label}
+                  >
+                    <title>{entry.label}</title>
+                    {displayLabel}
+                  </text>
+                </g>
+              )
+            })}
+          </g>
 
           <g className="chart-grid" fill="#111111">
             {Y_TICKS.map((tick) => (
               <g key={tick}>
                 <line
-                  x1={MARGIN.left}
-                  x2={WIDTH - MARGIN.right}
+                  x1={margin.left}
+                  x2={WIDTH - margin.right}
                   y1={y(tick)}
                   y2={y(tick)}
                   className={tick === 0 ? 'horizon-line' : 'grid-line'}
                 />
-                <text x={MARGIN.left - 12} y={y(tick) + 5} textAnchor="end">{tick}</text>
+                <text x={margin.left - 12} y={y(tick) + 5} textAnchor="end">{tick}</text>
               </g>
             ))}
             {xTickIndexes.map((index) => (
@@ -214,11 +370,11 @@ export function VisibilityOverviewChart({
                 <line
                   x1={x(index)}
                   x2={x(index)}
-                  y1={MARGIN.top}
-                  y2={HEIGHT - MARGIN.bottom}
+                  y1={margin.top}
+                  y2={height - margin.bottom}
                   className="grid-line vertical"
                 />
-                <text x={x(index)} y={HEIGHT - MARGIN.bottom + 24} textAnchor="middle">
+                <text x={x(index)} y={height - margin.bottom + 24} textAnchor="middle">
                   {formatUtcTick(times[index], index === 0 || index === pointCount - 1)}
                 </text>
               </g>
@@ -227,8 +383,8 @@ export function VisibilityOverviewChart({
 
           <g clipPath={`url(#${chartId}-clip)`}>
             <line
-              x1={MARGIN.left}
-              x2={WIDTH - MARGIN.right}
+              x1={margin.left}
+              x2={WIDTH - margin.right}
               y1={y(minimumAltitude)}
               y2={y(minimumAltitude)}
               className="threshold-line"
@@ -250,16 +406,16 @@ export function VisibilityOverviewChart({
             <line
               x1={x(centerIndex)}
               x2={x(centerIndex)}
-              y1={MARGIN.top}
-              y2={HEIGHT - MARGIN.bottom}
+              y1={margin.top}
+              y2={height - margin.bottom}
               className="center-time-line"
             />
             {activeX !== null && (
               <line
                 x1={activeX}
                 x2={activeX}
-                y1={MARGIN.top}
-                y2={HEIGHT - MARGIN.bottom}
+                y1={margin.top}
+                y2={height - margin.bottom}
                 className="cursor-line"
               />
             )}
@@ -267,22 +423,22 @@ export function VisibilityOverviewChart({
 
           <text
             x={20}
-            y={MARGIN.top + PLOT_HEIGHT / 2}
+            y={margin.top + PLOT_HEIGHT / 2}
             textAnchor="middle"
-            transform={`rotate(-90 20 ${MARGIN.top + PLOT_HEIGHT / 2})`}
+            transform={`rotate(-90 20 ${margin.top + PLOT_HEIGHT / 2})`}
             className="axis-title"
             fill="#111111"
           >
             Altitude [°]
           </text>
-          <text x={MARGIN.left + PLOT_WIDTH / 2} y={HEIGHT - 7} textAnchor="middle" className="axis-title" fill="#111111">
+          <text x={margin.left + plotWidth / 2} y={height - 14} textAnchor="middle" className="axis-title" fill="#111111">
             Time (UTC)
           </text>
 
           {safeActiveIndex !== null && activeX !== null && (
             <g className="chart-tooltip overview-tooltip" pointerEvents="none" fill="#111111">
-              <rect x={tooltipX} y={35} width={tooltipWidth} height={tooltipHeight} rx="10" />
-              <text x={tooltipX + 13} y={57} className="tooltip-time">
+              <rect x={tooltipX} y={tooltipY} width={tooltipWidth} height={tooltipHeight} rx="10" />
+              <text x={tooltipX + 13} y={tooltipY + 22} className="tooltip-time">
                 {formatUtcTick(times[safeActiveIndex], true)} UTC
               </text>
               {tooltipTargets.map((target, index) => {
@@ -291,7 +447,7 @@ export function VisibilityOverviewChart({
                   <text
                     key={target.id}
                     x={tooltipX + 13}
-                    y={80 + index * 20}
+                    y={tooltipY + 45 + index * 20}
                     fill="#111111"
                     className="tooltip-value"
                   >
@@ -302,7 +458,7 @@ export function VisibilityOverviewChart({
               {omittedTooltipTargets > 0 && (
                 <text
                   x={tooltipX + 13}
-                  y={80 + tooltipTargets.length * 20}
+                  y={tooltipY + 45 + tooltipTargets.length * 20}
                   className="tooltip-value"
                 >
                   +{omittedTooltipTargets} more targets · see table
@@ -312,9 +468,9 @@ export function VisibilityOverviewChart({
           )}
 
           <rect
-            x={MARGIN.left}
-            y={MARGIN.top}
-            width={PLOT_WIDTH}
+            x={margin.left}
+            y={margin.top}
+            width={plotWidth}
             height={PLOT_HEIGHT}
             fill="transparent"
             aria-hidden="true"

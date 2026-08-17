@@ -43,12 +43,22 @@ describe('AltitudeChart', () => {
   })
 
   it('provides concise chart legends and accessible time controls', () => {
-    render(<AltitudeChart target={target()} times={times} minimumAltitude={15} />)
+    const { container } = render(<AltitudeChart target={target()} times={times} minimumAltitude={15} />)
 
-    expect(screen.getByLabelText('Chart legend')).toHaveTextContent('Altitude threshold 15°')
-    expect(screen.getByLabelText('Chart legend')).toHaveTextContent(
+    const chart = screen.getByRole('img')
+    const legend = screen.getByLabelText('Chart legend')
+    expect(chart.contains(legend)).toBe(true)
+    expect(container.querySelector('.altitude-chart > .chart-legend')).not.toBeInTheDocument()
+    expect(legend).toHaveTextContent('Altitude threshold 15°')
+    expect(legend).toHaveTextContent(
       'Common visibility window',
     )
+    expect(legend.querySelectorAll('.legend-line')).toHaveLength(1)
+    for (const legendText of legend.querySelectorAll(
+      '.svg-legend-title, .svg-legend-item-label',
+    )) {
+      expect(legendText).toHaveAttribute('font-size', '16')
+    }
     expect(screen.getByRole('img')).toHaveAccessibleName(/3C 84 altitude–time chart/)
     const timeSlider = screen.getByRole('slider', { name: '3C 84 time (UTC)' })
     expect(timeSlider).toBeInTheDocument()
@@ -57,6 +67,7 @@ describe('AltitudeChart', () => {
     expect(screen.getByRole('button', { name: 'Download 3C 84 altitude–time plot image' })).toBeInTheDocument()
 
     fireEvent.focus(timeSlider)
+    expect(container.querySelector('.chart-tooltip rect')).toHaveAttribute('y', '128')
     expect(document.querySelector('.plot-background')).toHaveAttribute('fill', '#ffffff')
     expect(document.querySelector('.chart-grid')).toHaveAttribute('fill', '#111111')
     expect(document.querySelector('.chart-tooltip')).toHaveAttribute('fill', '#111111')
@@ -84,7 +95,7 @@ describe('AltitudeChart', () => {
     expect(screen.getByText('Altitude [°]')).toHaveClass('axis-title')
 
     const altitudePath = container.querySelector('.altitude-line')
-    expect(altitudePath).toHaveAttribute('d', 'M68.00,429.33 L896.00,176.00')
+    expect(altitudePath).toHaveAttribute('d', 'M92.00,574.67 L1000.00,288.00')
     expect(altitudePath?.parentElement).toHaveAttribute('clip-path', expect.stringMatching(/^url\(#visible-/))
     expect(container.querySelector('desc')).toHaveTextContent(
       'Altitude from 0 to 90 degrees',

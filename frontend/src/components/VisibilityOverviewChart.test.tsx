@@ -90,9 +90,10 @@ describe('VisibilityOverviewChart', () => {
   })
 
   it('caps the in-chart tooltip when many targets are plotted', () => {
+    const lofarName = 'ILTJ043704.43+294013.1'
     const targets = Array.from({ length: 25 }, (_, index) => ({
       id: `target-${index}`,
-      name: `Target ${index + 1}`,
+      name: index === 0 ? lofarName : `Target ${index + 1}`,
       aliases: [],
       ra_deg: index,
       dec_deg: 20,
@@ -121,8 +122,30 @@ describe('VisibilityOverviewChart', () => {
 
     fireEvent.focus(screen.getByRole('slider', { name: 'Overview time (UTC)' }))
 
+    const chart = screen.getByRole('img')
+    const targetLegend = screen.getByLabelText('Target color legend')
+    const siteLegend = screen.getByLabelText('Observing-site line-style legend')
+    expect(chart.contains(targetLegend)).toBe(true)
+    expect(chart.contains(siteLegend)).toBe(true)
+    expect(container.querySelector('.overview-chart > .overview-legends')).not.toBeInTheDocument()
+    expect(targetLegend.querySelectorAll('.legend-item')).toHaveLength(25)
+    expect(screen.getByText(lofarName, {
+      selector: '.target-color-legend .legend-item',
+    })).toBeInTheDocument()
+    expect(chart).toHaveAttribute('viewBox', '0 0 1040 892')
+    const legendBaselines = [...chart.querySelectorAll<SVGTextElement>(
+      '.svg-chart-legend .svg-legend-item-label',
+    )].map((label) => Number(label.getAttribute('y')))
+    const plotTop = Number(chart.querySelector('clipPath rect')?.getAttribute('y'))
+    expect(Math.max(...legendBaselines)).toBeLessThan(plotTop)
+    for (const legendText of chart.querySelectorAll(
+      '.svg-legend-title, .svg-legend-item-label',
+    )) {
+      expect(legendText).toHaveAttribute('font-size', '16')
+    }
     expect(screen.getByText('+13 more targets · see table')).toBeInTheDocument()
     expect(container.querySelector('.overview-tooltip rect')).toHaveAttribute('height', '305')
+    expect(container.querySelector('.overview-tooltip rect')).toHaveAttribute('y', '482')
     expect(container.querySelector('.plot-background')).toHaveAttribute('fill', '#ffffff')
     expect(container.querySelector('.chart-grid')).toHaveAttribute('fill', '#111111')
     expect(container.querySelector('.overview-tooltip')).toHaveAttribute('fill', '#111111')
@@ -162,7 +185,7 @@ describe('VisibilityOverviewChart', () => {
     expect(screen.getByText('Altitude [°]')).toHaveClass('axis-title')
 
     const altitudePath = container.querySelector('.overview-altitude-line')
-    expect(altitudePath).toHaveAttribute('d', 'M68.00,486.67 L896.00,200.00')
+    expect(altitudePath).toHaveAttribute('d', 'M92.00,616.67 L1000.00,330.00')
     expect(altitudePath?.parentElement).toHaveAttribute('clip-path', expect.stringMatching(/^url\(#overview-/))
     expect(container.querySelector('desc')).toHaveTextContent(
       'Altitude from 0 to 90 degrees',

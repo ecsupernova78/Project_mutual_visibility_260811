@@ -3,6 +3,11 @@ import { useId, useRef, useState, type PointerEvent } from 'react'
 import type { VisibilityTarget } from '../types'
 import { getSiteChartStyle } from './chartStyles'
 import { PlotExportControls } from './PlotExportControls'
+import {
+  fitSvgLegendLabel,
+  layoutSvgLegendGrid,
+  SVG_LEGEND_FONT_SIZE,
+} from './svgLegendLayout'
 
 interface AltitudeChartProps {
   target: VisibilityTarget
@@ -10,14 +15,22 @@ interface AltitudeChartProps {
   minimumAltitude: number
 }
 
-const WIDTH = 920
-const HEIGHT = 382
-const MARGIN = { top: 24, right: 24, bottom: 54, left: 68 }
+const WIDTH = 1040
+const PLOT_HEIGHT = 344
+const MARGIN = { top: 116, right: 40, bottom: 78, left: 92 }
+const HEIGHT = MARGIN.top + PLOT_HEIGHT + MARGIN.bottom
 const PLOT_WIDTH = WIDTH - MARGIN.left - MARGIN.right
-const PLOT_HEIGHT = HEIGHT - MARGIN.top - MARGIN.bottom
 const Y_MIN = 0
 const Y_MAX = 90
 const Y_TICKS = [0, 15, 30, 45, 60, 75, 90]
+
+interface DetailLegendEntry {
+  key: string
+  label: string
+  kind: 'site' | 'threshold' | 'window'
+  locationId?: string
+  siteIndex?: number
+}
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(Math.max(value, minimum), maximum)
 }
@@ -69,6 +82,30 @@ export function AltitudeChart({
   const rawId = useId()
   const patternId = `visible-${rawId.replace(/:/g, '')}`
   const pointCount = times.length
+  const legendEntries: DetailLegendEntry[] = [
+    ...target.location_series.map((series, index) => ({
+      key: `site-${series.location_id}`,
+      label: series.location_name,
+      kind: 'site' as const,
+      locationId: series.location_id,
+      siteIndex: index,
+    })),
+    {
+      key: 'altitude-threshold',
+      label: `Altitude threshold ${minimumAltitude}°`,
+      kind: 'threshold',
+    },
+    {
+      key: 'common-visibility-window',
+      label: 'Common visibility window',
+      kind: 'window',
+    },
+  ]
+  const legendLayout = layoutSvgLegendGrid(legendEntries, {
+    startX: MARGIN.left,
+    firstBaselineY: 58,
+    availableWidth: PLOT_WIDTH,
+  })
   const x = (index: number) =>
     MARGIN.left + (pointCount <= 1 ? 0 : (index / (pointCount - 1)) * PLOT_WIDTH)
   const y = (altitude: number) =>
@@ -117,32 +154,11 @@ export function AltitudeChart({
   const safeActiveIndex = activeIndex === null ? null : clamp(activeIndex, 0, pointCount - 1)
   const activeX = safeActiveIndex === null ? null : x(safeActiveIndex)
   const tooltipX = activeX !== null && activeX > WIDTH - 245 ? activeX - 214 : (activeX ?? 0) + 12
+  const tooltipY = MARGIN.top + 12
   const tooltipVisible = safeActiveIndex !== null
 
   return (
     <div className="altitude-chart">
-      <div className="chart-legend" aria-label="Chart legend">
-        {target.location_series.map((series, index) => (
-          <span className="legend-item" key={series.location_id}>
-            <span
-              className="legend-line"
-              style={{ '--legend-color': getSiteChartStyle(series.location_id, index).color } as React.CSSProperties}
-              data-dash={getSiteChartStyle(series.location_id, index).kind}
-              aria-hidden="true"
-            />
-            {series.location_name}
-          </span>
-        ))}
-        <span className="legend-item">
-          <span className="legend-threshold" aria-hidden="true" />
-          Altitude threshold {minimumAltitude}°
-        </span>
-        <span className="legend-item">
-          <span className="legend-window" aria-hidden="true" />
-          Common visibility window
-        </span>
-      </div>
-
       <PlotExportControls
         svgRef={svgRef}
         filename={`${target.name}-altitude-time-${times[0]}-${times.at(-1) ?? times[0]}`}
@@ -174,6 +190,83 @@ export function AltitudeChart({
               />
             </clipPath>
           </defs>
+
+          <g
+            className="svg-chart-legend detail-svg-legend"
+            role="group"
+            aria-label="Chart legend"
+          >
+            <text
+              x={MARGIN.left}
+              y={28}
+              className="svg-legend-title"
+              fontSize={SVG_LEGEND_FONT_SIZE}
+            >
+              Legend
+            </text>
+            {legendLayout.items.map(({ entry, x: legendX, y: legendY, textMaxWidth }) => {
+              const displayLabel = fitSvgLegendLabel(entry.label, textMaxWidth)
+              const siteStyle = entry.kind === 'site'
+                ? getSiteChartStyle(entry.locationId ?? '', entry.siteIndex ?? 0)
+                : null
+
+              return (
+                <g className="svg-legend-entry" key={entry.key}>
+                  {entry.kind === 'site' && siteStyle && (
+                    <line
+                      x1={legendX}
+                      x2={legendX + 28}
+                      y1={legendY - 6}
+                      y2={legendY - 6}
+                      stroke={siteStyle.color}
+                      strokeWidth="3"
+                      strokeDasharray={siteStyle.dash}
+                      strokeLinecap="round"
+                      className="legend-line"
+                      data-dash={siteStyle.kind}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {entry.kind === 'threshold' && (
+                    <line
+                      x1={legendX}
+                      x2={legendX + 28}
+                      y1={legendY - 6}
+                      y2={legendY - 6}
+                      stroke="#c3293a"
+                      strokeWidth="2.5"
+                      strokeDasharray="6 5"
+                      className="legend-threshold"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {entry.kind === 'window' && (
+                    <rect
+                      x={legendX}
+                      y={legendY - 17}
+                      width="28"
+                      height="15"
+                      fill={`url(#${patternId})`}
+                      stroke="#16785f"
+                      strokeWidth="1"
+                      className="legend-window"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <text
+                    x={legendX + 38}
+                    y={legendY}
+                    className="legend-item svg-legend-item-label"
+                    fontSize={SVG_LEGEND_FONT_SIZE}
+                    aria-label={entry.label}
+                  >
+                    <title>{entry.label}</title>
+                    {displayLabel}
+                  </text>
+                </g>
+              )
+            })}
+          </g>
 
           <g className="chart-grid" fill="#111111">
             {Y_TICKS.map((tick) => (
@@ -270,7 +363,7 @@ export function AltitudeChart({
           </text>
           <text
             x={MARGIN.left + PLOT_WIDTH / 2}
-            y={HEIGHT - 6}
+            y={HEIGHT - 14}
             textAnchor="middle"
             className="axis-title"
             fill="#111111"
@@ -296,19 +389,19 @@ export function AltitudeChart({
               })}
               <rect
                 x={tooltipX}
-                y={32}
+                y={tooltipY}
                 width="202"
                 height={46 + target.location_series.length * 21}
                 rx="10"
               />
-              <text x={tooltipX + 13} y={54} className="tooltip-time">
+              <text x={tooltipX + 13} y={tooltipY + 22} className="tooltip-time">
                 {formatUtcTick(times[safeActiveIndex], true)} UTC
               </text>
               {target.location_series.map((series, index) => (
                 <text
                   key={series.location_id}
                   x={tooltipX + 13}
-                  y={78 + index * 21}
+                  y={tooltipY + 46 + index * 21}
                   fill="#111111"
                   className="tooltip-value"
                 >

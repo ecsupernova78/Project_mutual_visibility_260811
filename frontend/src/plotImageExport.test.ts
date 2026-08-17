@@ -34,6 +34,9 @@ function createSvg() {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('viewBox', '0 0 920 382')
   svg.innerHTML = `
+    <g class="svg-chart-legend" font-size="16">
+      <text>Legend target</text>
+    </g>
     <path class="altitude-line" d="M0,0 L1,1" />
     <rect class="chart-hit-area" />
     <line class="cursor-line" />
@@ -98,6 +101,9 @@ describe('plotImageExport', () => {
     const serialized = await readBlobAsText(createObjectUrl.mock.calls[0][0] as Blob)
     expect(serialized).toContain('xmlns="http://www.w3.org/2000/svg"')
     expect(serialized).toContain('altitude-line')
+    expect(serialized).toContain('svg-chart-legend')
+    expect(serialized).toContain('font-size="16"')
+    expect(serialized).toContain('Legend target')
     expect(serialized).not.toContain('chart-hit-area')
     expect(serialized).not.toContain('cursor-line')
     expect(serialized).not.toContain('chart-tooltip')
