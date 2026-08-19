@@ -401,7 +401,6 @@ fieldset:disabled { opacity: .68; }
 .grid-line { stroke: #d9dfe4; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .grid-line.vertical { stroke-dasharray: 2 5; }
 .horizon-line { stroke: #4b5563; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
-.threshold-line { stroke: #c3293a; stroke-width: 1.5; stroke-dasharray: 5 5; vector-effect: non-scaling-stroke; }
 .visibility-window { stroke: rgba(21, 117, 98, .24); stroke-width: 1; }
 .altitude-line { filter: drop-shadow(0 0 1px rgba(17, 24, 39, .12)); }
 .cursor-line { stroke: rgba(17, 24, 39, .58); stroke-width: 1; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; }

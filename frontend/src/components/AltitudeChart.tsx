@@ -12,7 +12,7 @@ import {
 interface AltitudeChartProps {
   target: VisibilityTarget
   times: string[]
-  minimumAltitude: number
+  centerTime: string
 }
 
 const WIDTH = 1040
@@ -23,11 +23,12 @@ const PLOT_WIDTH = WIDTH - MARGIN.left - MARGIN.right
 const Y_MIN = 0
 const Y_MAX = 90
 const Y_TICKS = [0, 15, 30, 45, 60, 75, 90]
+const DETAIL_SITE_COLOR = '#0b7f8c'
 
 interface DetailLegendEntry {
   key: string
   label: string
-  kind: 'site' | 'threshold' | 'window'
+  kind: 'site' | 'reference' | 'window'
   locationId?: string
   siteIndex?: number
 }
@@ -57,6 +58,16 @@ function getTickIndexes(length: number, targetCount = 6) {
   )
 }
 
+function nearestTimeIndex(times: string[], targetTime: string) {
+  const target = new Date(targetTime).getTime()
+  if (!Number.isFinite(target) || times.length === 0) return 0
+  return times.reduce((nearest, time, index) => {
+    const distance = Math.abs(new Date(time).getTime() - target)
+    const nearestDistance = Math.abs(new Date(times[nearest]).getTime() - target)
+    return distance < nearestDistance ? index : nearest
+  }, 0)
+}
+
 function getVisibleRuns(mask: boolean[]) {
   const runs: Array<[number, number]> = []
   let start: number | null = null
@@ -75,7 +86,7 @@ function getVisibleRuns(mask: boolean[]) {
 export function AltitudeChart({
   target,
   times,
-  minimumAltitude,
+  centerTime,
 }: AltitudeChartProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -91,9 +102,9 @@ export function AltitudeChart({
       siteIndex: index,
     })),
     {
-      key: 'altitude-threshold',
-      label: `Altitude threshold ${minimumAltitude}°`,
-      kind: 'threshold',
+      key: 'reference-utc',
+      label: 'Reference UTC',
+      kind: 'reference',
     },
     {
       key: 'common-visibility-window',
@@ -129,7 +140,7 @@ export function AltitudeChart({
 
   const visibleRuns = getVisibleRuns(target.simultaneous_mask.slice(0, pointCount))
   const xTickIndexes = getTickIndexes(pointCount)
-  const thresholdY = y(minimumAltitude)
+  const centerIndex = nearestTimeIndex(times, centerTime)
 
   const moveToIndex = (clientX: number, element: SVGRectElement) => {
     const bounds = element.getBoundingClientRect()
@@ -202,7 +213,7 @@ export function AltitudeChart({
               className="svg-legend-title"
               fontSize={SVG_LEGEND_FONT_SIZE}
             >
-              Legend
+              {target.name}
             </text>
             {legendLayout.items.map(({ entry, x: legendX, y: legendY, textMaxWidth }) => {
               const displayLabel = fitSvgLegendLabel(entry.label, textMaxWidth)
@@ -218,7 +229,7 @@ export function AltitudeChart({
                       x2={legendX + 28}
                       y1={legendY - 6}
                       y2={legendY - 6}
-                      stroke={siteStyle.color}
+                      stroke={DETAIL_SITE_COLOR}
                       strokeWidth="3"
                       strokeDasharray={siteStyle.dash}
                       strokeLinecap="round"
@@ -227,16 +238,16 @@ export function AltitudeChart({
                       aria-hidden="true"
                     />
                   )}
-                  {entry.kind === 'threshold' && (
+                  {entry.kind === 'reference' && (
                     <line
-                      x1={legendX}
-                      x2={legendX + 28}
-                      y1={legendY - 6}
-                      y2={legendY - 6}
-                      stroke="#c3293a"
+                      x1={legendX + 14}
+                      x2={legendX + 14}
+                      y1={legendY - 19}
+                      y2={legendY + 2}
+                      stroke="#111827"
                       strokeWidth="2.5"
-                      strokeDasharray="6 5"
-                      className="legend-threshold"
+                      strokeDasharray="3 4"
+                      className="legend-center-line"
                       aria-hidden="true"
                     />
                   )}
@@ -317,20 +328,12 @@ export function AltitudeChart({
               )
             })}
 
-            <line
-              x1={MARGIN.left}
-              x2={WIDTH - MARGIN.right}
-              y1={thresholdY}
-              y2={thresholdY}
-              className="threshold-line"
-            />
-
             {paths.map((path, index) => (
               <path
                 key={target.location_series[index].location_id}
                 d={path}
                 fill="none"
-                stroke={getSiteChartStyle(target.location_series[index].location_id, index).color}
+                stroke={DETAIL_SITE_COLOR}
                 strokeWidth="2.8"
                 strokeDasharray={getSiteChartStyle(target.location_series[index].location_id, index).dash}
                 strokeLinecap="round"
@@ -339,6 +342,14 @@ export function AltitudeChart({
                 className="altitude-line"
               />
             ))}
+
+            <line
+              x1={x(centerIndex)}
+              x2={x(centerIndex)}
+              y1={MARGIN.top}
+              y2={HEIGHT - MARGIN.bottom}
+              className="center-time-line"
+            />
 
             {activeX !== null && (
               <line
@@ -373,7 +384,7 @@ export function AltitudeChart({
 
           {tooltipVisible && safeActiveIndex !== null && activeX !== null && (
             <g className="chart-tooltip" pointerEvents="none" fill="#111111">
-              {target.location_series.map((series, index) => {
+              {target.location_series.map((series) => {
                 const altitude = series.altitudes_deg[safeActiveIndex]
                 return Number.isFinite(altitude) && altitude >= Y_MIN && altitude <= Y_MAX ? (
                   <circle
@@ -381,7 +392,7 @@ export function AltitudeChart({
                     cx={activeX}
                     cy={y(altitude)}
                     r="5"
-                    fill={getSiteChartStyle(series.location_id, index).color}
+                    fill={DETAIL_SITE_COLOR}
                     stroke="#111111"
                     strokeWidth="2"
                   />
@@ -449,7 +460,7 @@ export function AltitudeChart({
             {target.location_series.map((series) => (
               <th key={series.location_id}>{series.location_name} altitude</th>
             ))}
-            <th>All sites meet threshold</th>
+            <th>Common visibility</th>
           </tr>
         </thead>
         <tbody>

@@ -379,14 +379,12 @@ function Results({
   response,
   selectedId,
   onSelect,
-  minimumAltitude,
   overviewTargetIds,
   onOverviewSelectionChange,
 }: {
   response: VisibilityResponse
   selectedId: string | null
   onSelect: (id: string) => void
-  minimumAltitude: number
   overviewTargetIds: ReadonlySet<string>
   onOverviewSelectionChange: (targetIds: Set<string>) => void
 }) {
@@ -496,7 +494,7 @@ function Results({
           key={target.id}
           target={target}
           times={response.times_utc}
-          minimumAltitude={minimumAltitude}
+          centerTime={response.metadata.center_time_utc}
         />
       </section>
 
@@ -573,7 +571,6 @@ function Results({
           targets={plottedTargets}
           times={response.times_utc}
           centerTime={response.metadata.center_time_utc}
-          minimumAltitude={minimumAltitude}
         />
       </section>
     </div>
@@ -1042,7 +1039,6 @@ export default function App() {
               response={response}
               selectedId={selectedResultId}
               onSelect={setSelectedResultId}
-              minimumAltitude={minimumAltitude}
               overviewTargetIds={overviewTargetIds}
               onOverviewSelectionChange={setOverviewTargetIds}
             />

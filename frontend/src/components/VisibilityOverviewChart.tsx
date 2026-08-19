@@ -14,7 +14,6 @@ interface VisibilityOverviewChartProps {
   targets: VisibilityTarget[]
   times: string[]
   centerTime: string
-  minimumAltitude: number
 }
 
 const WIDTH = 1040
@@ -36,7 +35,7 @@ interface TargetLegendEntry {
 interface SiteLegendEntry {
   key: string
   label: string
-  kind: 'site' | 'reference' | 'threshold'
+  kind: 'site' | 'reference'
   locationId?: string
   siteIndex?: number
 }
@@ -88,7 +87,6 @@ export function VisibilityOverviewChart({
   targets,
   times,
   centerTime,
-  minimumAltitude,
 }: VisibilityOverviewChartProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const [isTableOpen, setIsTableOpen] = useState(false)
@@ -131,11 +129,6 @@ export function VisibilityOverviewChart({
       key: 'reference-utc',
       label: 'Reference UTC',
       kind: 'reference',
-    },
-    {
-      key: 'altitude-threshold',
-      label: `Altitude threshold ${minimumAltitude}°`,
-      kind: 'threshold',
     },
   ]
   const siteLegendLayout = layoutSvgLegendGrid(siteLegendEntries, {
@@ -324,19 +317,6 @@ export function VisibilityOverviewChart({
                       aria-hidden="true"
                     />
                   )}
-                  {entry.kind === 'threshold' && (
-                    <line
-                      x1={legendX}
-                      x2={legendX + 28}
-                      y1={legendY - 6}
-                      y2={legendY - 6}
-                      stroke="#c3293a"
-                      strokeWidth="2.5"
-                      strokeDasharray="6 5"
-                      className="legend-threshold"
-                      aria-hidden="true"
-                    />
-                  )}
                   <text
                     x={legendX + 38}
                     y={legendY}
@@ -382,13 +362,6 @@ export function VisibilityOverviewChart({
           </g>
 
           <g clipPath={`url(#${chartId}-clip)`}>
-            <line
-              x1={margin.left}
-              x2={WIDTH - margin.right}
-              y1={y(minimumAltitude)}
-              y2={y(minimumAltitude)}
-              className="threshold-line"
-            />
             {paths.map(({ target, targetIndex, series, siteIndex, path }) => (
               <path
                 key={`${target.id}-${series.location_id}`}
@@ -516,7 +489,7 @@ export function VisibilityOverviewChart({
                   )),
                 )}
                 {targets.map((target) => (
-                  <th scope="col" key={`${target.id}-common`}>{target.name}: all sites meet threshold</th>
+                  <th scope="col" key={`${target.id}-common`}>{target.name}: Common visibility</th>
                 ))}
               </tr>
             </thead>

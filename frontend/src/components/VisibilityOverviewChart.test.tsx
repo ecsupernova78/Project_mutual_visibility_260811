@@ -15,7 +15,6 @@ describe('VisibilityOverviewChart', () => {
           '2026-08-11T00:30:00Z',
         ]}
         centerTime="2026-08-11T00:15:00Z"
-        minimumAltitude={15}
       />,
     )
 
@@ -53,7 +52,6 @@ describe('VisibilityOverviewChart', () => {
           '2026-08-11T00:30:00Z',
         ]}
         centerTime="2026-08-11T00:15:00Z"
-        minimumAltitude={15}
       />,
     )
 
@@ -80,7 +78,6 @@ describe('VisibilityOverviewChart', () => {
           '2026-08-11T00:30:00Z',
         ]}
         centerTime="2026-08-11T00:15:00Z"
-        minimumAltitude={15}
       />,
     )
     expect(filteredContainer.querySelector('.overview-altitude-line')).toHaveAttribute(
@@ -116,7 +113,6 @@ describe('VisibilityOverviewChart', () => {
           '2026-08-11T00:30:00Z',
         ]}
         centerTime="2026-08-11T00:15:00Z"
-        minimumAltitude={15}
       />,
     )
 
@@ -174,9 +170,15 @@ describe('VisibilityOverviewChart', () => {
         targets={[plottedTarget]}
         times={['2026-08-11T00:00:00Z', '2026-08-11T00:15:00Z']}
         centerTime="2026-08-11T00:15:00Z"
-        minimumAltitude={15}
       />,
     )
+
+    expect(screen.getByText('Reference UTC', {
+      selector: '.site-pattern-legend .legend-item',
+    })).toBeInTheDocument()
+    expect(container.querySelector('.center-time-line')).toBeInTheDocument()
+    expect(screen.queryByText(/Altitude threshold/i)).not.toBeInTheDocument()
+    expect(container.querySelector('.threshold-line')).not.toBeInTheDocument()
 
     const yTickLabels = [...container.querySelectorAll('.chart-grid > g > text')]
       .slice(0, 7)

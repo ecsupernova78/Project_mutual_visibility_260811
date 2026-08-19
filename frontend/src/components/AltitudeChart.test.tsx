@@ -34,7 +34,7 @@ describe('AltitudeChart', () => {
       <AltitudeChart
         target={target({ location_series: [] })}
         times={times}
-        minimumAltitude={15}
+        centerTime={times[1]}
       />,
     )
 
@@ -43,17 +43,44 @@ describe('AltitudeChart', () => {
   })
 
   it('provides concise chart legends and accessible time controls', () => {
-    const { container } = render(<AltitudeChart target={target()} times={times} minimumAltitude={15} />)
+    const plottedTarget = target({
+      location_series: [
+        ...target().location_series,
+        {
+          location_id: 'pyeongchang',
+          location_name: 'Pyeongchang (Kor)',
+          altitudes_deg: [30, 35],
+        },
+      ],
+    })
+    const { container } = render(
+      <AltitudeChart target={plottedTarget} times={times} centerTime={times[1]} />,
+    )
 
     const chart = screen.getByRole('img')
     const legend = screen.getByLabelText('Chart legend')
     expect(chart.contains(legend)).toBe(true)
     expect(container.querySelector('.altitude-chart > .chart-legend')).not.toBeInTheDocument()
-    expect(legend).toHaveTextContent('Altitude threshold 15°')
-    expect(legend).toHaveTextContent(
-      'Common visibility window',
+    expect(screen.getByText('3C 84', { selector: '.svg-legend-title' })).toBeInTheDocument()
+    expect(legend).toHaveTextContent('Reference UTC')
+    expect(legend).toHaveTextContent('Common visibility window')
+    expect(legend).not.toHaveTextContent('Altitude threshold')
+    expect(legend.querySelectorAll('.legend-line')).toHaveLength(2)
+    expect(container.querySelector('.threshold-line')).not.toBeInTheDocument()
+    expect(screen.getByText('Common visibility', { selector: 'th' })).toBeInTheDocument()
+    expect(screen.queryByText(/meet threshold/i)).not.toBeInTheDocument()
+    expect(container.querySelector('.center-time-line')).toHaveAttribute('x1', '1000')
+
+    const siteLines = [...container.querySelectorAll('.altitude-line')]
+    expect(new Set(siteLines.map((line) => line.getAttribute('stroke'))).size).toBe(1)
+    expect(siteLines[0].getAttribute('stroke-dasharray')).not.toBe(
+      siteLines[1].getAttribute('stroke-dasharray'),
     )
-    expect(legend.querySelectorAll('.legend-line')).toHaveLength(1)
+    const legendSiteLines = [...legend.querySelectorAll('.legend-line')]
+    expect(new Set(legendSiteLines.map((line) => line.getAttribute('stroke'))).size).toBe(1)
+    expect(legendSiteLines[0].getAttribute('stroke-dasharray')).not.toBe(
+      legendSiteLines[1].getAttribute('stroke-dasharray'),
+    )
     for (const legendText of legend.querySelectorAll(
       '.svg-legend-title, .svg-legend-item-label',
     )) {
@@ -84,7 +111,7 @@ describe('AltitudeChart', () => {
           }],
         })}
         times={times}
-        minimumAltitude={15}
+        centerTime={times[1]}
       />,
     )
 

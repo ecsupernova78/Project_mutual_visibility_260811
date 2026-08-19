@@ -124,7 +124,9 @@ describe('상호 가시성 인터페이스', () => {
     expect(overviewImage.querySelector('[role="slider"]')).not.toBeInTheDocument()
     expect(screen.getByRole('slider', { name: '3C123 time (UTC)' })).toBeInTheDocument()
     expect(screen.getByRole('slider', { name: 'Overview time (UTC)' })).toBeInTheDocument()
-    expect(screen.getByText('Altitude threshold 15°', { selector: '.site-pattern-legend .legend-item' })).toBeInTheDocument()
+    expect(within(detailImage).getByText('Reference UTC', { selector: '.legend-item' })).toBeInTheDocument()
+    expect(within(overviewImage).getByText('Reference UTC', { selector: '.legend-item' })).toBeInTheDocument()
+    expect(screen.queryByText(/Altitude threshold/i)).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Jump to Overview/ })).toHaveAttribute(
       'href',
       '#common-visibility-overview',
