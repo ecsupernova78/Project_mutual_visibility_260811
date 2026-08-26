@@ -1,10 +1,25 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react'
 
 import { calculateVisibility } from './api'
 import { AltitudeChart } from './components/AltitudeChart'
 import { getTargetColor } from './components/chartStyles'
 import { LofarCatalogPanel } from './components/LofarCatalogPanel'
+import { ObservingSitePanel } from './components/ObservingSitePanel'
 import { VisibilityOverviewChart } from './components/VisibilityOverviewChart'
+import {
+  isDefaultObservingSite,
+  loadObservingSiteState,
+  MAXIMUM_SAVED_SITES,
+  MAXIMUM_SELECTED_SITES,
+  saveObservingSiteState,
+} from './observingSiteStorage'
 import type {
   CustomTargetSnapshot,
   LofarSource,
@@ -21,7 +36,13 @@ interface CatalogTarget {
   coordinate: string
 }
 
-type AppTab = 'visibility' | 'lofar'
+type AppTab = 'visibility' | 'sites' | 'lofar'
+
+const TAB_IDS: Record<AppTab, string> = {
+  visibility: 'visibility-tab',
+  sites: 'observing-sites-tab',
+  lofar: 'lofar-catalog-tab',
+}
 
 const MAXIMUM_TARGET_COUNT = 25
 const HANGUL_PATTERN = new RegExp('[\\u3131-\\u318e\\uac00-\\ud7a3]')
@@ -32,30 +53,6 @@ const CATALOG_TARGETS: CatalogTarget[] = [
   { id: '3c433', name: '3C433', coordinate: '21h 23m · +25° 04′' },
   { id: '3c295', name: '3C295', coordinate: '14h 11m · +52° 12′' },
   { id: '3c134', name: '3C134', coordinate: '05h 04m · +38° 06′' },
-]
-
-const INITIAL_LOCATIONS: ObserverLocation[] = [
-  {
-    id: 'narrabri',
-    name: 'Narrabri (Aus)',
-    latitude_deg: -30.31667,
-    longitude_deg: 149.76667,
-    elevation_m: 237,
-  },
-  {
-    id: 'pyeongchang',
-    name: 'Pyeongchang (Kor)',
-    latitude_deg: 37.36889,
-    longitude_deg: 128.39028,
-    elevation_m: 700,
-  },
-  {
-    id: 'fushan',
-    name: 'Fushan (Taiwan)',
-    latitude_deg: 24.7564722222,
-    longitude_deg: 121.5816388889,
-    elevation_m: 0,
-  },
 ]
 
 function initialUtcInput() {
@@ -190,12 +187,14 @@ function LocationEditor({
   location,
   index,
   selected,
+  selectionDisabled,
   onToggle,
   onChange,
 }: {
   location: ObserverLocation
   index: number
   selected: boolean
+  selectionDisabled: boolean
   onToggle: () => void
   onChange: (next: ObserverLocation) => void
 }) {
@@ -226,7 +225,9 @@ function LocationEditor({
           <input
             type="checkbox"
             checked={selected}
+            disabled={selectionDisabled}
             aria-label={`Include ${location.name} in the observation`}
+            aria-describedby={selectionDisabled ? 'main-site-selection-limit' : undefined}
             onChange={onToggle}
           />
           <span aria-hidden="true">{selected ? 'Included' : 'Excluded'}</span>
@@ -273,9 +274,6 @@ function LocationEditor({
           onChange={(elevation_m) => onChange({ ...location, elevation_m })}
         />
       </div>
-      {location.id === 'fushan' && (
-        <p className="location-note">Provided coordinates applied · Elevation defaults to 0 m because no value was specified</p>
-      )}
     </section>
   )
 }
@@ -579,10 +577,21 @@ function Results({
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<AppTab>('visibility')
-  const [locations, setLocations] = useState<ObserverLocation[]>(INITIAL_LOCATIONS)
+  const [initialSiteState] = useState(loadObservingSiteState)
+  const [locations, setLocations] = useState<ObserverLocation[]>(initialSiteState.locations)
   const [selectedLocationIds, setSelectedLocationIds] = useState(
-    () => new Set(['narrabri', 'pyeongchang']),
+    initialSiteState.selectedLocationIds,
   )
+  const [siteStateRevision, setSiteStateRevision] = useState(0)
+  const [siteStorageWarning, setSiteStorageWarning] = useState<string | null>(() => {
+    if (initialSiteState.storageStatus === 'invalid') {
+      return 'Saved site data could not be loaded and was left unchanged. Saving a new change will replace it.'
+    }
+    if (initialSiteState.storageStatus === 'unavailable') {
+      return 'Browser storage is unavailable. Changes will be kept only until this page is closed.'
+    }
+    return null
+  })
   const [centerTime, setCenterTime] = useState(initialUtcInput)
   const [hoursBefore, setHoursBefore] = useState(6)
   const [hoursAfter, setHoursAfter] = useState(6)
@@ -608,6 +617,28 @@ export default function App() {
 
   useEffect(() => () => activeRequest.current?.abort(), [])
 
+  useEffect(() => {
+    if (
+      siteStateRevision === 0
+      && (initialSiteState.storageStatus === 'invalid'
+        || initialSiteState.storageStatus === 'unavailable')
+    ) return
+
+    const saveResult = saveObservingSiteState(locations, selectedLocationIds)
+    const updateWarning = window.setTimeout(() => {
+      if (saveResult === 'unavailable') {
+        setSiteStorageWarning(
+          'Browser storage is unavailable. Changes will be kept only until this page is closed.',
+        )
+      } else if (saveResult === 'invalid') {
+        setSiteStorageWarning('Site changes contain invalid values and have not been saved.')
+      } else {
+        setSiteStorageWarning(null)
+      }
+    }, 0)
+    return () => window.clearTimeout(updateWarning)
+  }, [initialSiteState.storageStatus, locations, selectedLocationIds, siteStateRevision])
+
   const invalidateResults = () => {
     activeRequest.current?.abort()
     setResponse(null)
@@ -617,22 +648,47 @@ export default function App() {
     setError(null)
   }
 
-  const updateLocation = (index: number, next: ObserverLocation) => {
+  const updateLocation = (next: ObserverLocation) => {
     invalidateResults()
-    setLocations((current) => {
-      const copy = [...current]
-      copy[index] = next
-      return copy
-    })
+    setSiteStateRevision((current) => current + 1)
+    setLocations((current) => current.map((location) => (
+      location.id === next.id ? next : location
+    )))
   }
 
   const toggleLocation = (id: string) => {
+    const selected = selectedLocationIds.has(id)
+    if (!selected && selectedLocationIds.size >= MAXIMUM_SELECTED_SITES) return
     invalidateResults()
+    setSiteStateRevision((current) => current + 1)
     setSelectedLocationIds((current) => {
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
-      else next.add(id)
+      else {
+        if (next.size >= MAXIMUM_SELECTED_SITES) return current
+        next.add(id)
+      }
       if (next.size > 0) setLocationSelectionError(false)
+      return next
+    })
+  }
+
+  const createLocation = (location: ObserverLocation) => {
+    if (locations.length >= MAXIMUM_SAVED_SITES) return
+    if (locations.some((savedLocation) => savedLocation.id === location.id)) return
+    invalidateResults()
+    setSiteStateRevision((current) => current + 1)
+    setLocations((current) => [...current, location])
+  }
+
+  const deleteLocation = (id: string) => {
+    if (isDefaultObservingSite(id)) return
+    invalidateResults()
+    setSiteStateRevision((current) => current + 1)
+    setLocations((current) => current.filter((location) => location.id !== id))
+    setSelectedLocationIds((current) => {
+      const next = new Set(current)
+      next.delete(id)
       return next
     })
   }
@@ -733,7 +789,16 @@ export default function App() {
     setError(null)
 
     const payload: VisibilityRequest = {
-      locations: locations.filter((location) => selectedLocationIds.has(location.id)),
+      locations: locations
+        .filter((location) => selectedLocationIds.has(location.id))
+        .slice(0, MAXIMUM_SELECTED_SITES)
+        .map((location) => ({
+          id: location.id,
+          name: location.name,
+          latitude_deg: location.latitude_deg,
+          longitude_deg: location.longitude_deg,
+          elevation_m: location.elevation_m,
+        })),
       center_time_utc: toUtcIso(centerTime),
       hours_before: hoursBefore,
       hours_after: hoursAfter,
@@ -766,10 +831,32 @@ export default function App() {
     }
   }
 
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const tabs: AppTab[] = ['visibility', 'sites', 'lofar']
+    const currentIndex = tabs.indexOf(activeTab)
+    let nextIndex: number | null = null
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length
+    if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length
+    if (event.key === 'Home') nextIndex = 0
+    if (event.key === 'End') nextIndex = tabs.length - 1
+    if (nextIndex === null) return
+    event.preventDefault()
+    const nextTab = tabs[nextIndex]
+    setActiveTab(nextTab)
+    document.getElementById(TAB_IDS[nextTab])?.focus()
+  }
+
+  const activateTab = (nextTab: AppTab, moveFocus = false) => {
+    setActiveTab(nextTab)
+    if (moveFocus) {
+      window.setTimeout(() => document.getElementById(TAB_IDS[nextTab])?.focus(), 0)
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#visibility-panel" aria-label="Mutual Sky home" onClick={() => setActiveTab('visibility')}>
+        <a className="brand" href="#visibility-panel" aria-label="Mutual Sky home" onClick={() => activateTab('visibility')}>
           <span className="brand-mark" aria-hidden="true"><i /></span>
           <span><b>Mutual Sky</b><small>Shared Visibility</small></span>
         </a>
@@ -784,9 +871,24 @@ export default function App() {
           role="tab"
           aria-selected={activeTab === 'visibility'}
           aria-controls="visibility-panel"
-          onClick={() => setActiveTab('visibility')}
+          tabIndex={activeTab === 'visibility' ? 0 : -1}
+          onKeyDown={handleTabKeyDown}
+          onClick={() => activateTab('visibility')}
         >
           Observation Visibility
+        </button>
+        <button
+          id="observing-sites-tab"
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'sites'}
+          aria-controls="observing-sites-panel"
+          tabIndex={activeTab === 'sites' ? 0 : -1}
+          onKeyDown={handleTabKeyDown}
+          onClick={() => activateTab('sites')}
+        >
+          Observing Sites
+          <span>{selectedLocationIds.size} / {MAXIMUM_SELECTED_SITES}</span>
         </button>
         <button
           id="lofar-catalog-tab"
@@ -794,7 +896,9 @@ export default function App() {
           role="tab"
           aria-selected={activeTab === 'lofar'}
           aria-controls="lofar-catalog-panel"
-          onClick={() => setActiveTab('lofar')}
+          tabIndex={activeTab === 'lofar' ? 0 : -1}
+          onKeyDown={handleTabKeyDown}
+          onClick={() => activateTab('lofar')}
         >
           LOFAR DR3 Catalog
           {selectedImportedTargetIds.size > 0 && <span>{selectedImportedTargetIds.size}</span>}
@@ -818,6 +922,12 @@ export default function App() {
           <form onSubmit={handleSubmit} aria-busy={status === 'loading'}>
             <fieldset disabled={status === 'loading'}>
               <legend className="section-legend"><span>01</span>Observation Sites</legend>
+              <div className="location-section-heading">
+                <p>{selectedLocationIds.size} / {MAXIMUM_SELECTED_SITES} selected</p>
+                <button type="button" className="text-button" onClick={() => activateTab('sites', true)}>
+                  Manage Sites
+                </button>
+              </div>
               <div className="locations-stack">
                 {locations.map((location, index) => (
                   <LocationEditor
@@ -825,11 +935,20 @@ export default function App() {
                     location={location}
                     index={index}
                     selected={selectedLocationIds.has(location.id)}
+                    selectionDisabled={
+                      !selectedLocationIds.has(location.id)
+                      && selectedLocationIds.size >= MAXIMUM_SELECTED_SITES
+                    }
                     onToggle={() => toggleLocation(location.id)}
-                    onChange={(next) => updateLocation(index, next)}
+                    onChange={updateLocation}
                   />
                 ))}
               </div>
+              {selectedLocationIds.size >= MAXIMUM_SELECTED_SITES && (
+                <p id="main-site-selection-limit" className="site-limit-note">
+                  Three sites are selected. Deselect one before choosing another.
+                </p>
+              )}
               {locationSelectionError && (
                 <p className="field-error" role="alert">Select at least one observation site.</p>
               )}
@@ -964,7 +1083,7 @@ export default function App() {
                   Targets Imported from LOFAR DR3
                   <strong>{selectedImportedTargetIds.size} Selected / {importedTargets.size} Imported</strong>
                 </p>
-                <button type="button" className="text-button" onClick={() => setActiveTab('lofar')}>
+                <button type="button" className="text-button" onClick={() => activateTab('lofar', true)}>
                   Search Catalog
                 </button>
               </div>
@@ -1046,13 +1165,27 @@ export default function App() {
         </section>
       </main>
 
+      <ObservingSitePanel
+        hidden={activeTab !== 'sites'}
+        locations={locations}
+        selectedLocationIds={selectedLocationIds}
+        maximumSelected={MAXIMUM_SELECTED_SITES}
+        maximumSaved={MAXIMUM_SAVED_SITES}
+        storageWarning={siteStorageWarning}
+        onCreate={createLocation}
+        onUpdate={updateLocation}
+        onDelete={deleteLocation}
+        onToggle={toggleLocation}
+        onGoToVisibility={() => activateTab('visibility', true)}
+      />
+
       <LofarCatalogPanel
         hidden={activeTab !== 'lofar'}
         selectedSourceIds={selectedImportedTargetIds}
         selectedTargetCount={selectedTargetIds.size + selectedImportedTargetIds.size}
         maximumTargetCount={MAXIMUM_TARGET_COUNT}
         onToggleSource={toggleImportedSource}
-        onGoToVisibility={() => setActiveTab('visibility')}
+        onGoToVisibility={() => activateTab('visibility', true)}
       />
 
     </div>

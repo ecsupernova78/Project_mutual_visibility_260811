@@ -3,6 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import App from './App'
+import {
+  DEFAULT_OBSERVING_SITES,
+  OBSERVING_SITE_STORAGE_KEY,
+} from './observingSiteStorage'
 
 const responseBody = {
   times_utc: [
@@ -75,15 +79,17 @@ const responseBody = {
 describe('상호 가시성 인터페이스', () => {
   it('세 관측지와 다섯 개 카탈로그 천체를 표시한다', () => {
     render(<App />)
+    const visibilityPanel = document.querySelector('#visibility-panel') as HTMLElement
+    const visibility = within(visibilityPanel)
 
-    expect(screen.getByDisplayValue('Narrabri (Aus)')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('Pyeongchang (Kor)')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('Fushan (Taiwan)')).toBeInTheDocument()
+    expect(visibility.getByDisplayValue('Narrabri (Aus)')).toBeInTheDocument()
+    expect(visibility.getByDisplayValue('Pyeongchang (Kor)')).toBeInTheDocument()
+    expect(visibility.getByDisplayValue('Fushan (Taiwan)')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Observation Setup' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: /Reference Time UTC/ })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: /Target Selection/ })).toBeInTheDocument()
-    expect(screen.getAllByText('Latitude (N: + / S: −)')).toHaveLength(3)
-    expect(screen.getAllByText('Longitude (E: + / W: −)')).toHaveLength(3)
+    expect(visibility.getAllByText('Latitude (N: + / S: −)')).toHaveLength(3)
+    expect(visibility.getAllByText('Longitude (E: + / W: −)')).toHaveLength(3)
     expect(screen.getByRole('spinbutton', { name: 'Narrabri (Aus) latitude (N: + / S: −)' })).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: 'Pyeongchang (Kor) longitude (E: + / W: −)' })).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: 'Fushan (Taiwan) elevation' })).toBeDisabled()
@@ -92,15 +98,176 @@ describe('상호 가시성 인터페이스', () => {
     expect(screen.queryByText('관측지 C')).not.toBeInTheDocument()
     expect(screen.queryByText('첫 번째 관측 계획')).not.toBeInTheDocument()
     expect(screen.queryByText(/원하는 관측지를 골라/)).not.toBeInTheDocument()
-    expect(screen.getAllByRole('checkbox')).toHaveLength(8)
+    expect(visibility.getAllByRole('checkbox')).toHaveLength(8)
+    expect(screen.getByRole('tab', { name: /Observing Sites/ })).toHaveAttribute(
+      'aria-controls',
+      'observing-sites-panel',
+    )
     const builtInTargetList = screen.getByRole('list', { name: 'Examples of 5 Radio sources' })
     const builtInTargets = within(builtInTargetList).getAllByRole('listitem')
     expect(builtInTargets.map((item) => item.querySelector('b')?.textContent)).toEqual([
       '3C123', '3C273', '3C433', '3C295', '3C134',
     ])
     expect(screen.getByLabelText('Include Fushan (Taiwan) in the observation')).not.toBeChecked()
-    expect(screen.getByText(/Elevation defaults to 0 m/)).toBeInTheDocument()
+    expect(screen.queryByText(/Elevation defaults to 0 m/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Plot Altitude-Time' })).toBeEnabled()
+  })
+
+  it('supports keyboard navigation to the observing-site tab', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const visibilityTab = screen.getByRole('tab', { name: 'Observation Visibility' })
+
+    visibilityTab.focus()
+    await user.keyboard('{ArrowRight}')
+
+    const siteTab = screen.getByRole('tab', { name: /Observing Sites/ })
+    expect(siteTab).toHaveFocus()
+    expect(siteTab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tabpanel', { name: /Observing Sites/ })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Use Selected Sites' }))
+    await waitFor(() => expect(visibilityTab).toHaveFocus())
+    expect(visibilityTab).toHaveAttribute('aria-selected', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Manage Sites' }))
+    await waitFor(() => expect(siteTab).toHaveFocus())
+  })
+
+  it('does not overwrite corrupt saved-site data merely by mounting the app', async () => {
+    const corruptValue = '{not valid json'
+    localStorage.setItem(OBSERVING_SITE_STORAGE_KEY, corruptValue)
+
+    render(<App />)
+    await new Promise((resolve) => window.setTimeout(resolve, 0))
+    expect(localStorage.getItem(OBSERVING_SITE_STORAGE_KEY)).toBe(corruptValue)
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('tab', { name: /Observing Sites/ }))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Saved site data could not be loaded and was left unchanged.',
+    )
+  })
+
+  it('saves, edits, selects, and restores a custom observing site for calculation', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { unmount } = render(<App />)
+
+    await user.click(screen.getByRole('tab', { name: /Observing Sites/ }))
+    await user.type(screen.getByLabelText('Site name'), 'Mauna Kea (USA)')
+    await user.type(screen.getByLabelText('Latitude (N: + / S: −)'), '19.8207')
+    await user.type(screen.getByLabelText('Longitude (E: + / W: −)'), '-155.4681')
+    await user.type(screen.getByLabelText('Elevation (m)'), '4205')
+    await user.click(screen.getByRole('button', { name: 'Save Site' }))
+
+    const savedList = screen.getByRole('list', { name: 'Saved observing sites' })
+    const customCard = within(savedList).getByText('Mauna Kea (USA)').closest('article') as HTMLElement
+    expect(within(customCard).getByRole('checkbox')).not.toBeChecked()
+
+    await user.click(within(customCard).getByRole('button', { name: 'Edit Mauna Kea (USA)' }))
+    const editName = within(customCard).getByLabelText('Site name')
+    const editElevation = within(customCard).getByLabelText('Elevation (m)')
+    await user.clear(editName)
+    await user.type(editName, 'Mauna Kea VLBI (USA)')
+    await user.clear(editElevation)
+    await user.type(editElevation, '4300')
+    await user.click(within(customCard).getByRole('button', { name: 'Save Changes' }))
+
+    await user.click(screen.getByLabelText(
+      'Use Mauna Kea VLBI (USA) in Observation Visibility',
+    ))
+    await user.click(screen.getByRole('button', { name: 'Use Selected Sites' }))
+    await waitFor(() => expect(screen.getByRole('tab', {
+      name: 'Observation Visibility',
+    })).toHaveFocus())
+    expect(screen.getByDisplayValue('Mauna Kea VLBI (USA)')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as {
+      locations: Array<Record<string, unknown>>
+    }
+    expect(payload.locations).toContainEqual(expect.objectContaining({
+      name: 'Mauna Kea VLBI (USA)',
+      latitude_deg: 19.8207,
+      longitude_deg: -155.4681,
+      elevation_m: 4300,
+    }))
+    const customPayload = payload.locations.find((location) => (
+      location.name === 'Mauna Kea VLBI (USA)'
+    ))
+    expect(customPayload?.id).toMatch(/^site-/)
+
+    await waitFor(() => expect(localStorage.getItem(OBSERVING_SITE_STORAGE_KEY)).toContain(
+      'Mauna Kea VLBI (USA)',
+    ))
+    unmount()
+    render(<App />)
+    await user.click(screen.getByRole('tab', { name: /Observing Sites/ }))
+    expect(screen.getByText('Mauna Kea VLBI (USA)')).toBeInTheDocument()
+    expect(screen.getByLabelText(
+      'Use Mauna Kea VLBI (USA) in Observation Visibility',
+    )).toBeChecked()
+  })
+
+  it('deleting a selected saved site clears stale plots and removes it from the next request', async () => {
+    const user = userEvent.setup()
+    const customSite = {
+      id: 'site-test-observatory',
+      name: 'Test Observatory (USA)',
+      latitude_deg: 35.2,
+      longitude_deg: -106.5,
+      elevation_m: 2100,
+    }
+    localStorage.setItem(OBSERVING_SITE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      locations: [...DEFAULT_OBSERVING_SITES, customSite],
+      selected_location_ids: ['narrabri', 'pyeongchang', customSite.id],
+    }))
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
+    expect(await screen.findByRole('img', { name: /3C123 altitude–time chart/ })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: /Observing Sites/ }))
+    const savedList = screen.getByRole('list', { name: 'Saved observing sites' })
+    const customCard = within(savedList)
+      .getByText(customSite.name)
+      .closest('article') as HTMLElement
+    await user.click(within(customCard).getByRole('button', {
+      name: `Delete ${customSite.name}`,
+    }))
+    await user.click(within(customCard).getByRole('button', {
+      name: `Confirm deletion of ${customSite.name}`,
+    }))
+    await user.click(screen.getByRole('button', { name: 'Use Selected Sites' }))
+
+    expect(screen.queryByRole('img', { name: /3C123 altitude–time chart/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', {
+      name: 'Simultaneously Visible Target Search',
+    })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const secondPayload = JSON.parse(String(fetchMock.mock.calls[1][1]?.body)) as {
+      locations: Array<{ id: string }>
+    }
+    expect(secondPayload.locations.map((location) => location.id)).toEqual([
+      'narrabri',
+      'pyeongchang',
+    ])
   })
 
   it('API 계약대로 계산을 요청하고 선택 천체 그래프를 표시한다', async () => {
