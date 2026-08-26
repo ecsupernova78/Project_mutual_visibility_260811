@@ -20,6 +20,7 @@ import {
   MAXIMUM_SELECTED_SITES,
   saveObservingSiteState,
 } from './observingSiteStorage'
+import { orderedSelectedSites } from './observingSiteGeometry'
 import type {
   CustomTargetSnapshot,
   LofarSource,
@@ -186,6 +187,7 @@ function NumericInput({
 function LocationEditor({
   location,
   index,
+  selectionOrder,
   selected,
   selectionDisabled,
   onToggle,
@@ -193,6 +195,7 @@ function LocationEditor({
 }: {
   location: ObserverLocation
   index: number
+  selectionOrder: number | null
   selected: boolean
   selectionDisabled: boolean
   onToggle: () => void
@@ -205,8 +208,11 @@ function LocationEditor({
       aria-labelledby={`${prefix}-title`}
     >
       <div className="location-heading">
-        <span className={`site-marker marker-${index + 1}`} aria-hidden="true">
-          {index + 1}
+        <span
+          className={`site-marker ${selectionOrder === null ? 'marker-unselected' : `marker-${selectionOrder}`}`}
+          aria-hidden="true"
+        >
+          {selectionOrder ?? '—'}
         </span>
         <div>
           <label id={`${prefix}-title`} className="location-name-label">
@@ -614,6 +620,7 @@ export default function App() {
   const [selectionError, setSelectionError] = useState(false)
   const [locationSelectionError, setLocationSelectionError] = useState(false)
   const activeRequest = useRef<AbortController | null>(null)
+  const selectedLocations = orderedSelectedSites(locations, selectedLocationIds)
 
   useEffect(() => () => activeRequest.current?.abort(), [])
 
@@ -789,8 +796,7 @@ export default function App() {
     setError(null)
 
     const payload: VisibilityRequest = {
-      locations: locations
-        .filter((location) => selectedLocationIds.has(location.id))
+      locations: selectedLocations
         .slice(0, MAXIMUM_SELECTED_SITES)
         .map((location) => ({
           id: location.id,
@@ -934,6 +940,9 @@ export default function App() {
                     key={location.id}
                     location={location}
                     index={index}
+                    selectionOrder={selectedLocationIds.has(location.id)
+                      ? selectedLocations.findIndex((site) => site.id === location.id) + 1
+                      : null}
                     selected={selectedLocationIds.has(location.id)}
                     selectionDisabled={
                       !selectedLocationIds.has(location.id)

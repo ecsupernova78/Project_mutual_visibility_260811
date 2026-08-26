@@ -61,6 +61,7 @@ _SOURCE_PREFIX_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9+.-]{0,79}")
 SortField = Literal["distance", "total_flux", "peak_flux"]
 SortDirection = Literal["asc", "desc"]
 SearchMode = Literal["brightness", "cone"]
+MorphologyCode = Literal["S", "M", "C"]
 
 MORPHOLOGY = {
     "S": ("Single Gaussian", "A radio source represented by one fitted Gaussian component."),
@@ -71,6 +72,7 @@ MORPHOLOGY_CODEBOOK = [
     LofarMorphologyDefinition(code=code, label=label, description=description)
     for code, (label, description) in MORPHOLOGY.items()
 ]
+ALL_MORPHOLOGY_CODES: frozenset[MorphologyCode] = frozenset(MORPHOLOGY)
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +103,7 @@ class LofarSearch:
     ra_deg: float | None = None
     dec_deg: float | None = None
     radius_arcmin: float | None = None
+    morphology_codes: frozenset[MorphologyCode] = ALL_MORPHOLOGY_CODES
 
 
 def _configured_seconds(name: str, default: float, minimum: float, maximum: float) -> float:
@@ -165,6 +168,8 @@ def _build_adql(search: LofarSearch) -> str:
         raise ValueError("unsupported catalog result limit")
     if search.source_prefix is not None and _SOURCE_PREFIX_PATTERN.fullmatch(search.source_prefix) is None:
         raise ValueError("source_prefix must contain 1-80 safe Source_Name characters")
+    if not search.morphology_codes or not search.morphology_codes <= ALL_MORPHOLOGY_CODES:
+        raise ValueError("morphology_codes must contain one or more of S, M, or C")
 
     order_column = {"distance": "Separation_deg", "total_flux": "Total_flux", "peak_flux": "Peak_flux"}[search.sort_by]
     selected = "Source_Name, RA, DEC, Total_flux, Peak_flux, S_Code"
@@ -174,9 +179,13 @@ def _build_adql(search: LofarSearch) -> str:
         if search.ra_deg is not None or search.dec_deg is not None or search.radius_arcmin is not None:
             raise ValueError("brightness searches must not contain cone coordinates")
         predicates.append(f"{order_column} IS NOT NULL")
+        morphology_values = ", ".join(f"'{code}'" for code in MORPHOLOGY if code in search.morphology_codes)
+        predicates.append(f"S_Code IN ({morphology_values})")
         if search.source_prefix is not None:
             predicates.append(f"1=ivo_nocasematch(Source_Name, '{search.source_prefix}%')")
     elif search.mode == "cone":
+        if search.morphology_codes != ALL_MORPHOLOGY_CODES:
+            raise ValueError("cone searches do not accept morphology filters")
         if search.source_prefix is not None:
             raise ValueError("cone searches must not contain a source prefix")
         if (
@@ -782,7 +791,11 @@ async def _search_with_client(
                 radius_arcmin=search.radius_arcmin,
                 **common,
             )
-        return LofarSearchResponse(source_prefix=search.source_prefix, **common)
+        return LofarSearchResponse(
+            source_prefix=search.source_prefix,
+            morphology_codes=[code for code in MORPHOLOGY if code in search.morphology_codes],
+            **common,
+        )
     except LofarCatalogError, asyncio.CancelledError:
         if job_url is not None and not job_completed:
             await _abort_job(client, job_url)

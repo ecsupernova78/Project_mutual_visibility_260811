@@ -34,6 +34,22 @@ function renderPanel(overrides: Partial<Parameters<typeof ObservingSitePanel>[0]
 }
 
 describe('ObservingSitePanel', () => {
+  it('maps selected sites and lists each pairwise great-circle distance', () => {
+    renderPanel()
+    const mapCard = screen.getByRole('heading', {
+      name: 'Map and Pairwise Distances',
+    }).closest('section') as HTMLElement
+
+    expect(within(mapCard).getByRole('region', {
+      name: 'Interactive map of selected observing sites',
+    })).toBeInTheDocument()
+    expect(within(mapCard).getByText('7,848.1 km')).toBeInTheDocument()
+    expect(within(mapCard).getByText('Surface great-circle distance; elevation is excluded.'))
+      .toBeInTheDocument()
+    expect(within(mapCard).getByRole('link', { name: 'OpenStreetMap contributors' }))
+      .toHaveAttribute('href', 'https://www.openstreetmap.org/copyright')
+  })
+
   it('creates a validated saved profile without silently selecting it', async () => {
     const user = userEvent.setup()
     const props = renderPanel()
@@ -53,7 +69,7 @@ describe('ObservingSitePanel', () => {
       elevation_m: 4205,
     }))
     expect(props.onToggle).not.toHaveBeenCalled()
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(document.querySelector('.site-live-status')).toHaveTextContent(
       'Mauna Kea (USA) was saved. Select it from the list to use it.',
     )
   })

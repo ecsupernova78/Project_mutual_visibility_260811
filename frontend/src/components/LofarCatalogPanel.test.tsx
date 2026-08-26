@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -59,6 +59,7 @@ function response({
     sort_direction: sortDirection,
     limit,
     source_prefix: sourcePrefix,
+    morphology_codes: ['S', 'M', 'C'],
     center_ra_deg: null,
     center_dec_deg: null,
     radius_arcmin: null,
@@ -81,6 +82,55 @@ function renderPanel(selectedSourceIds: ReadonlySet<string> = new Set()) {
 }
 
 describe('LofarCatalogPanel', () => {
+  it('filters the brightest-source TAP query by selected LoTSS morphology codes', async () => {
+    const user = userEvent.setup()
+    const source = makeSource(0)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ sources: [source] }))
+    renderPanel()
+
+    const classificationGroup = screen.getByRole('group', {
+      name: /Classification codes.*LoTSS S_Code/,
+    })
+    const single = within(classificationGroup).getByRole('checkbox', { name: /^S —/ })
+    const multiple = within(classificationGroup).getByRole('checkbox', { name: /^M —/ })
+    const component = within(classificationGroup).getByRole('checkbox', { name: /^C —/ })
+    expect(single).toBeChecked()
+    expect(multiple).toBeChecked()
+    expect(component).toBeChecked()
+
+    await user.click(component)
+    await user.click(screen.getByText('View TAP query'))
+    expect(screen.getByText((_, element) => (
+      element?.tagName === 'CODE'
+      && element.textContent?.includes("S_Code IN ('S', 'M')") === true
+    ))).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
+
+    expect(await screen.findByRole('checkbox', {
+      name: `${source.name}: add to visibility targets`,
+    })).toBeInTheDocument()
+    const query = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost').searchParams
+    expect(query.getAll('morphology_codes')).toEqual(['S', 'M'])
+  })
+
+  it('requires at least one morphology code before starting a brightness query', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    renderPanel()
+    const classificationGroup = screen.getByRole('group', {
+      name: /Classification codes.*LoTSS S_Code/,
+    })
+    for (const checkbox of within(classificationGroup).getAllByRole('checkbox')) {
+      await user.click(checkbox)
+    }
+
+    await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Select at least one LoTSS S_Code classification.',
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('loads a brightness-ranked TOP list once and paginates it locally in groups of 25', async () => {
     const user = userEvent.setup()
     const sources = Array.from({ length: 30 }, (_, index) => makeSource(index))
@@ -104,19 +154,20 @@ describe('LofarCatalogPanel', () => {
     expect(await screen.findByRole('checkbox', { name: `${sources[0].name}: add to visibility targets` })).toBeInTheDocument()
 
     const query = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost').searchParams
-    expect(Object.fromEntries(query)).toEqual({
+    expect(Object.fromEntries(query)).toEqual(expect.objectContaining({
       sort_by: 'peak_flux',
       sort_direction: 'asc',
       limit: '1000',
-    })
+    }))
+    expect(query.getAll('morphology_codes')).toEqual(['S', 'M', 'C'])
     expect(query.has('source_prefix')).toBe(false)
     expect(query.has('page')).toBe(false)
     expect(query.has('page_size')).toBe(false)
-    expect(screen.getAllByRole('checkbox')).toHaveLength(25)
+    expect(within(screen.getByRole('table')).getAllByRole('checkbox')).toHaveLength(25)
     expect(screen.getByRole('columnheader', { name: /Peak flux/ })).toHaveAttribute('aria-sort', 'ascending')
 
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    expect(screen.getAllByRole('checkbox')).toHaveLength(5)
+    expect(within(screen.getByRole('table')).getAllByRole('checkbox')).toHaveLength(5)
     expect(screen.getByRole('checkbox', { name: `${sources[25].name}: add to visibility targets` })).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(screen.getByText(/26–30 \/ 30/)).toBeInTheDocument()
@@ -165,6 +216,9 @@ describe('LofarCatalogPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
     expect(await screen.findByText(/Running an asynchronous ASTRON TAP job/)).toBeInTheDocument()
     expect(screen.getByLabelText('Flux measure')).toBeDisabled()
+    expect(screen.getByRole('group', {
+      name: /Classification codes.*LoTSS S_Code/,
+    })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Running TAP job…' })).toBeDisabled()
 
     expect(screen.getByText(/stops waiting in the browser only.*server job may continue/)).toBeInTheDocument()

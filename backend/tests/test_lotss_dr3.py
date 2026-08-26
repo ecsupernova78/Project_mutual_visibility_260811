@@ -70,8 +70,13 @@ def test_global_and_prefix_adql_are_bounded_and_whitelisted() -> None:
     assert global_adql == (
         "SELECT TOP 100 Source_Name, RA, DEC, Total_flux, Peak_flux, S_Code "
         "FROM lotss_dr3.main_sources WHERE Total_flux IS NOT NULL "
+        "AND S_Code IN ('S', 'M', 'C') "
         "ORDER BY Total_flux DESC, Source_Name ASC"
     )
+
+    subset_adql = _build_adql(_search(morphology_codes=frozenset({"S", "M"})))
+    assert "S_Code IN ('S', 'M')" in subset_adql
+    assert "'C'" not in subset_adql
 
     prefix_adql = _build_adql(_search(source_prefix="ILTJ1234", sort_by="peak_flux", sort_direction="asc", limit=25))
     assert "SELECT TOP 25" in prefix_adql
@@ -104,6 +109,8 @@ def test_global_and_prefix_adql_are_bounded_and_whitelisted() -> None:
         {"sort_direction": "desc; DROP TABLE"},
         {"limit": 20},
         {"limit": 10_000},
+        {"morphology_codes": frozenset()},
+        {"morphology_codes": frozenset({"X"})},
     ],
 )
 def test_adql_builder_defends_its_own_invariants(overrides: dict[str, object]) -> None:
@@ -608,12 +615,54 @@ def test_catalog_endpoint_defaults_to_global_async_browse(client: TestClient, mo
         "sort_direction": "desc",
         "limit": 100,
         "source_prefix": None,
+        "morphology_codes": ["S", "M", "C"],
         "result_count": 0,
         "sources": [],
         "enrichment_status": "complete",
         "enrichment_warning": None,
         "morphology_codebook": [],
     }
+
+
+def test_catalog_endpoint_accepts_repeated_morphology_codes_and_canonicalizes_order(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: list[LofarSearch] = []
+
+    async def fake_search(search: LofarSearch) -> LofarSearchResponse:
+        captured.append(search)
+        return LofarSearchResponse(
+            sort_by=search.sort_by,
+            sort_direction=search.sort_direction,
+            limit=search.limit,
+            source_prefix=search.source_prefix,
+            morphology_codes=[code for code in ("S", "M", "C") if code in search.morphology_codes],
+            result_count=0,
+            sources=[],
+        )
+
+    monkeypatch.setattr("app.main.catalog_query_coordinator.search", fake_search)
+    response = client.get(
+        "/api/v1/catalogs/lotss-dr3/sources",
+        params=[("morphology_codes", "M"), ("morphology_codes", "S")],
+    )
+
+    assert response.status_code == 200
+    assert captured[0].morphology_codes == frozenset({"S", "M"})
+    assert response.json()["morphology_codes"] == ["S", "M"]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        [("morphology_codes", "")],
+        [("morphology_codes", "X")],
+        [("morphology_codes", "S"), ("morphology_codes", "S")],
+    ],
+)
+def test_catalog_endpoint_rejects_invalid_morphology_codes(client: TestClient, params: list[tuple[str, str]]) -> None:
+    response = client.get("/api/v1/catalogs/lotss-dr3/sources", params=params)
+    assert response.status_code == 422
 
 
 def test_catalog_endpoint_coerces_allowed_limit_query_strings(

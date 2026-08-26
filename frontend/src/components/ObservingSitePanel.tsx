@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 
 import {
   createObservingSiteId,
   isDefaultObservingSite,
 } from '../observingSiteStorage'
+import { orderedSelectedSites } from '../observingSiteGeometry'
 import type { ObserverLocation } from '../types'
+import { ObservingSiteMap } from './ObservingSiteMap'
 
 interface SiteDraft {
   name: string
@@ -202,6 +204,10 @@ export function ObservingSitePanel({
   const [editError, setEditError] = useState<SiteValidationIssue | null>(null)
   const [statusMessage, setStatusMessage] = useState('')
   const selectionAtLimit = selectedLocationIds.size >= maximumSelected
+  const selectedSites = useMemo(
+    () => orderedSelectedSites(locations, selectedLocationIds),
+    [locations, selectedLocationIds],
+  )
 
   const focusAfterRender = (id: string) => {
     window.setTimeout(() => document.getElementById(id)?.focus(), 0)
@@ -287,6 +293,8 @@ export function ObservingSitePanel({
           <button type="button" onClick={onGoToVisibility}>Use Selected Sites</button>
         </div>
       </header>
+
+      {!hidden && <ObservingSiteMap sites={selectedSites} />}
 
       <div className="site-manager-grid">
         <section className="site-editor-card" aria-labelledby="new-site-title">

@@ -2,7 +2,7 @@
 
 - 상태: 채택
 - 날짜: 2026-08-12
-- 수정: 2026-08-13 (밝기 순·cone 검색과 SIMBAD 위치 후보 보강)
+- 수정: 2026-08-26 (밝기 순 S_Code 필터 추가)
 
 ## 맥락
 
@@ -15,8 +15,9 @@ source catalogue에는 약 1,366만 행이 있으므로 브라우저에서 전�
 
 - 백엔드만 ASTRON의 공개 TAP endpoint와 `lotss_dr3.main_sources`를 조회합니다.
 - 클라이언트는 밝기 순 목록과 source cone search 중 하나를 선택합니다. 밝기 순 목록은 선택적인
-  LoTSS Source ID prefix, 밝기 정렬 기준·방향, 결과 수를 받으며 prefix를 생략하면 전역 상위 결과를
-  조회합니다. Cone search는 ICRS RA·Dec와 최대 60 arcmin 반경을 받고 중심 거리 또는 밝기 순으로
+  LoTSS Source ID prefix, 밝기 정렬 기준·방향, 결과 수와 하나 이상의 `S_Code` S/M/C를 받으며
+  prefix를 생략하면 전역 상위 결과를 조회합니다. 선택한 형태 코드는 TAP의 TOP 적용 전
+  `S_Code IN (...)` 조건으로 제한합니다. Cone search는 ICRS RA·Dec와 최대 60 arcmin 반경을 받고 중심 거리 또는 밝기 순으로
   정렬합니다.
 - 서버는 고정된 ADQL template과 ASTRON asynchronous TAP endpoint를 사용하며, 한 HTTP 요청의
   timeout, UWS job 전체 timeout, 최대 1,000행 상한을 각각 적용합니다.

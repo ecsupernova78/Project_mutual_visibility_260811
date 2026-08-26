@@ -79,6 +79,7 @@ export async function searchLofarSources(
 
   const sourcePrefix = params.source_prefix?.trim()
   if (sourcePrefix) query.set('source_prefix', sourcePrefix)
+  for (const code of params.morphology_codes) query.append('morphology_codes', code)
 
   let response: Response
   try {

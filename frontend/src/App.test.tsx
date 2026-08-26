@@ -210,7 +210,8 @@ describe('상호 가시성 인터페이스', () => {
     unmount()
     render(<App />)
     await user.click(screen.getByRole('tab', { name: /Observing Sites/ }))
-    expect(screen.getByText('Mauna Kea VLBI (USA)')).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Saved observing sites' }))
+      .getByText('Mauna Kea VLBI (USA)')).toBeInTheDocument()
     expect(screen.getByLabelText(
       'Use Mauna Kea VLBI (USA) in Observation Visibility',
     )).toBeChecked()

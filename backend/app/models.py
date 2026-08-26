@@ -288,6 +288,11 @@ class LofarSearchParameters(ApiModel):
     sort_by: Literal["total_flux", "peak_flux"] = "total_flux"
     sort_direction: Literal["asc", "desc"] = "desc"
     limit: Literal[10, 25, 50, 100, 250, 500, 1000] = 100
+    morphology_codes: list[Literal["S", "M", "C"]] = Field(
+        default_factory=lambda: ["S", "M", "C"],
+        min_length=1,
+        max_length=3,
+    )
 
     @field_validator("limit", mode="before")
     @classmethod
@@ -305,6 +310,16 @@ class LofarSearchParameters(ApiModel):
             return None
         return value
 
+    @field_validator("morphology_codes")
+    @classmethod
+    def canonical_morphology_codes(
+        cls,
+        value: list[Literal["S", "M", "C"]],
+    ) -> list[Literal["S", "M", "C"]]:
+        if len(set(value)) != len(value):
+            raise ValueError("morphology_codes must not contain duplicates")
+        return [code for code in ("S", "M", "C") if code in value]
+
 
 class LofarSearchResponse(ApiModel):
     catalog: Literal["lofar_dr3"] = "lofar_dr3"
@@ -320,6 +335,9 @@ class LofarSearchResponse(ApiModel):
     sort_direction: Literal["asc", "desc"]
     limit: int
     source_prefix: str | None
+    morphology_codes: list[Literal["S", "M", "C"]] = Field(
+        default_factory=lambda: ["S", "M", "C"],
+    )
     result_count: int
     sources: list[LofarSource]
     enrichment_status: Literal["complete", "partial", "unavailable"] = "complete"

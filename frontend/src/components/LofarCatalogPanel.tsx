@@ -4,6 +4,7 @@ import { coneSearchLofarSources, searchLofarSources } from '../api'
 import type {
   LofarConeSearchParams,
   LofarConeSortField,
+  LofarMorphologyCode,
   LofarSearchParams,
   LofarSearchResponse,
   LofarSortField,
@@ -30,6 +31,15 @@ const LOCAL_PAGE_SIZE = 25
 const RESULT_LIMIT_OPTIONS = [10, 25, 50, 100, 250, 500, 1000] as const
 const SOURCE_PREFIX_PATTERN = /^[A-Za-z0-9][A-Za-z0-9+.-]{0,79}$/
 const HANGUL_PATTERN = new RegExp('[\\u3131-\\u318e\\uac00-\\ud7a3]')
+const MORPHOLOGY_OPTIONS: Array<{
+  code: LofarMorphologyCode
+  label: string
+  description: string
+}> = [
+  { code: 'S', label: 'Single Gaussian', description: 'One fitted Gaussian component' },
+  { code: 'M', label: 'Multiple Gaussian', description: 'Multiple fitted Gaussian components' },
+  { code: 'C', label: 'Shared island', description: 'Single Gaussian in a shared source island' },
+]
 
 function englishCatalogText(value: string | null | undefined) {
   return value && !HANGUL_PATTERN.test(value) ? value : null
@@ -51,6 +61,7 @@ function buildBrightnessAdqlPreview(
   sortBy: LofarSortField,
   sortDirection: SortDirection,
   limit: number,
+  morphologyCodes: LofarMorphologyCode[],
 ) {
   const normalizedPrefix = sourcePrefix.trim()
   const sortColumn = sortBy === 'total_flux' ? 'Total_flux' : 'Peak_flux'
@@ -58,6 +69,9 @@ function buildBrightnessAdqlPreview(
   const escapedPrefix = normalizedPrefix.replaceAll("'", "''")
   const predicates = [
     `${sortColumn} IS NOT NULL`,
+    morphologyCodes.length > 0
+      ? `S_Code IN (${morphologyCodes.map((code) => `'${code}'`).join(', ')})`
+      : '1=0 /* Select at least one S_Code */',
     ...(normalizedPrefix ? [`1=ivo_nocasematch(Source_Name, '${escapedPrefix}%')`] : []),
   ]
   return [
@@ -133,6 +147,9 @@ export function LofarCatalogPanel({
   const [sortBy, setSortBy] = useState<LofarSortField>('total_flux')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [limit, setLimit] = useState(100)
+  const [morphologyCodes, setMorphologyCodes] = useState<Set<LofarMorphologyCode>>(
+    () => new Set(MORPHOLOGY_OPTIONS.map((option) => option.code)),
+  )
   const [coneRa, setConeRa] = useState('')
   const [coneDec, setConeDec] = useState('')
   const [coneRadius, setConeRadius] = useState('5')
@@ -152,8 +169,17 @@ export function LofarCatalogPanel({
   const coneRaInvalid = Boolean(coneRa && !validNumber(coneRa, 0, 360, false))
   const coneDecInvalid = Boolean(coneDec && !validNumber(coneDec, -90, 90))
   const coneRadiusInvalid = !validNumber(coneRadius, 0.1, 60)
+  const selectedMorphologyCodes = MORPHOLOGY_OPTIONS
+    .map((option) => option.code)
+    .filter((code) => morphologyCodes.has(code))
   const adqlPreview = mode === 'brightness'
-    ? buildBrightnessAdqlPreview(sourcePrefix, sortBy, sortDirection, limit)
+    ? buildBrightnessAdqlPreview(
+        sourcePrefix,
+        sortBy,
+        sortDirection,
+        limit,
+        selectedMorphologyCodes,
+      )
     : buildConeAdqlPreview(coneRa, coneDec, coneRadius, coneSortBy, coneSortDirection, coneLimit)
 
   useEffect(() => () => activeRequest.current?.controller.abort(), [])
@@ -202,6 +228,15 @@ export function LofarCatalogPanel({
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (mode === 'brightness') {
+      if (selectedMorphologyCodes.length === 0) {
+        patchModeState(mode, {
+          error: 'Select at least one LoTSS S_Code classification.',
+          notice: null,
+          canRetry: false,
+          status: 'error',
+        })
+        return
+      }
       if (sourcePrefixInvalid) {
         patchModeState(mode, {
           error: 'The Source ID prefix must begin with a letter or number and contain only letters, numbers, +, periods, and hyphens.',
@@ -218,6 +253,7 @@ export function LofarCatalogPanel({
           sort_by: sortBy,
           sort_direction: sortDirection,
           limit,
+          morphology_codes: selectedMorphologyCodes,
         },
       })
       return
@@ -333,9 +369,10 @@ export function LofarCatalogPanel({
           </div>
 
           {mode === 'brightness' ? (
-            <fieldset className="catalog-query-fieldset" disabled={activeState.status === 'loading'}>
-              <legend className="sr-only">LOFAR DR3 brightness search parameters</legend>
-              <div className="catalog-query-grid">
+            <>
+              <fieldset className="catalog-query-fieldset" disabled={activeState.status === 'loading'}>
+                <legend className="sr-only">LOFAR DR3 brightness search parameters</legend>
+                <div className="catalog-query-grid">
                 <label className="catalog-field catalog-name-query">
                   <span>Source ID prefix (optional)</span>
                   <input
@@ -364,9 +401,36 @@ export function LofarCatalogPanel({
                     <option value="asc">Faintest first</option>
                   </select>
                 </label>
-                <ResultLimitField value={limit} onChange={setLimit} />
-              </div>
-            </fieldset>
+                  <ResultLimitField value={limit} onChange={setLimit} />
+                </div>
+              </fieldset>
+              <fieldset
+                className="catalog-classification-filter"
+                disabled={activeState.status === 'loading'}
+              >
+                <legend>Classification codes <span>(LoTSS S_Code)</span></legend>
+                <div>
+                  {MORPHOLOGY_OPTIONS.map((option) => (
+                    <label key={option.code}>
+                      <input
+                        type="checkbox"
+                        checked={morphologyCodes.has(option.code)}
+                        onChange={() => {
+                          setMorphologyCodes((current) => {
+                            const next = new Set(current)
+                            if (next.has(option.code)) next.delete(option.code)
+                            else next.add(option.code)
+                            return next
+                          })
+                        }}
+                      />
+                      <strong>{option.code} — {option.label}</strong>
+                      <small>{option.description}</small>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </>
           ) : (
             <fieldset className="catalog-query-fieldset" disabled={activeState.status === 'loading'}>
               <legend className="sr-only">LOFAR DR3 cone search parameters</legend>
@@ -437,7 +501,7 @@ export function LofarCatalogPanel({
 
           <p id="lofar-search-help" className="catalog-form-help">
             {mode === 'brightness'
-              ? 'Leave the Source ID prefix blank to retrieve the top sources across the catalog using the selected flux measure.'
+              ? 'Leave the Source ID prefix blank to retrieve the top sources across the catalog. S_Code values describe fitted radio morphology, not physical object type.'
               : 'Enter decimal-degree ICRS coordinates. The radius may range from 0.1 to 60 arcmin; results are initially ordered by angular separation.'}
             {' '}Results are displayed in pages of 25 sources.
           </p>
@@ -569,6 +633,9 @@ function CatalogResults({
             {isCone
               ? ` · center ${response.center_ra_deg ?? '—'}°, ${response.center_dec_deg ?? '—'}° · radius ${response.radius_arcmin ?? '—'}′`
               : response.source_prefix ? ` · Source ID “${response.source_prefix}”` : ' · entire catalog'}
+            {!isCone && response.morphology_codes?.length
+              ? ` · S_Code ${response.morphology_codes.join(', ')}`
+              : ''}
           </p>
           <EnrichmentNotice response={response} />
           <SourceTypeLegend sources={sources} morphologyCodebook={response.morphology_codebook} />

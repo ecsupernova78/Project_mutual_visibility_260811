@@ -27,7 +27,9 @@ OpenAPI 문서는 `http://127.0.0.1:8000/docs`에서 볼 수 있습니다.
 LoTSS adapter는 서버에 고정된
 `https://vo.astron.nl/__system__/tap/run/tap/async`와 `lotss_dr3.main_sources`만 사용합니다.
 임의 URL이나 ADQL은 API로 받지 않습니다. 밝기 순 endpoint는 선택적인 `source_prefix`,
-`Total_flux`(mJy) 또는 `Peak_flux`(mJy/beam), 정렬 방향을 받습니다. Cone endpoint는 ICRS
+`Total_flux`(mJy) 또는 `Peak_flux`(mJy/beam), 정렬 방향과 반복 query parameter
+`?morphology_codes=S&morphology_codes=M`처럼 반복되는 `morphology_codes`를 받습니다. 최소 한 코드를 요구하며 서버가 S/M/C 순으로 정규화해
+`S_Code IN (...)`을 ADQL `WHERE` 절에 추가합니다. Cone endpoint는 ICRS
 `ra_deg`, `dec_deg`, 0보다 크고 60 이하인 `radius_arcmin`을 받고 중심 거리·total flux·peak flux
 중 하나로 정렬합니다. 두 endpoint 모두 10·25·50·100·250·500·1,000개 중 결과 수를 선택할 수
 있습니다. TAP/UWS job은 생성·실행·상태 확인·결과 수신 후 삭제하며, 전체 job 제한시간을 넘기면

@@ -37,6 +37,7 @@ export interface LofarSource {
 export type LofarSortField = 'total_flux' | 'peak_flux'
 export type LofarConeSortField = 'distance' | LofarSortField
 export type SortDirection = 'desc' | 'asc'
+export type LofarMorphologyCode = 'S' | 'M' | 'C'
 
 export interface LofarMorphologyDefinition {
   code: 'S' | 'M' | 'C'
@@ -49,6 +50,7 @@ export interface LofarSearchParams {
   sort_by: LofarSortField
   sort_direction: SortDirection
   limit: number
+  morphology_codes: LofarMorphologyCode[]
 }
 
 export interface LofarConeSearchParams {
@@ -74,6 +76,7 @@ export interface LofarSearchResponse {
   sort_direction: SortDirection
   limit: number
   source_prefix: string | null
+  morphology_codes?: LofarMorphologyCode[] | null
   center_ra_deg: number | null
   center_dec_deg: number | null
   radius_arcmin: number | null

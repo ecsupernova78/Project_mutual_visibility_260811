@@ -8,6 +8,7 @@
 
 - Narrabri, Pyeongchang, Fushan과 사용자 저장 관측지 중 1–3개 선택 및 좌표 편집
 - 별도 Observing Sites 탭에서 관측지 이름·위도·경도·고도를 브라우저에 저장하고 목록에서 수정·선택
+- 선택한 관측지를 OpenStreetMap 번호 핀·연결선으로 표시하고 모든 관측지 쌍의 대권거리 계산
 - 중심 UTC, 전후 시간창, 샘플 간격, 최소 고도 설정
 - 3C 123, 3C 273, 3C 433, 3C 295, 3C 134 선택
 - 별도 LOFAR DR3 카탈로그 탭에서 144 MHz 밝기 순 목록 또는 ICRS 좌표 주변 cone search를 선택하고 계산 대상으로 가져오기
@@ -61,7 +62,9 @@ LoTSS DR3에서 가져온 total/peak flux는 카탈로그 검색 결과의 정�
 
 카탈로그 탭은 ASTRON의 공개 asynchronous TAP 서비스에 있는 `lotss_dr3.main_sources`를 서버에서
 제한된 ADQL 템플릿으로 조회합니다. **밝기 순 목록**에서는 전역 목록 또는 선택적인 Source ID prefix를
-조회하고 integrated/peak flux, 정렬 방향, 결과 수를 지정합니다. **Source cone search**에서는 ICRS
+조회하고 integrated/peak flux, 정렬 방향, 결과 수와 LoTSS `S_Code` 형태 분류(S/M/C)를 지정합니다.
+분류 조건은 결과를 받은 뒤 브라우저에서 거르는 것이 아니라 TAP ADQL의 `WHERE` 절에 적용됩니다.
+**Source cone search**에서는 ICRS
 RA·Dec와 최대 60 arcmin 반경을 입력하고 중심 거리 또는 flux 순으로 결과를 정렬합니다. 두 모드에서
 선택한 source의 ICRS 좌표 snapshot을 계산 요청에 포함하므로 고도 계산 중에는 외부 카탈로그를 다시
 조회하지 않습니다. 공개 조회에는 계정이나 API 키가 필요하지 않습니다.
@@ -70,6 +73,12 @@ RA·Dec와 최대 60 arcmin 반경을 입력하고 중심 거리 또는 flux 순
 `S_Code`도 물리적 천체 유형이 아니라 PyBDSF 전파 형태 코드입니다. `S`는 단일 Gaussian, `M`은 복수
 Gaussian, `C`는 다른 source와 같은 island 안의 단일 Gaussian source를 뜻합니다. 인터페이스는 이
 형태 코드표를 SIMBAD 물리 유형과 분리해 제공합니다.
+
+Observing Sites 지도는 API key 없이 Leaflet과 OpenStreetMap Standard 타일을 사용합니다. 선택 순서대로
+번호를 부여하고, 두 곳이면 1개·세 곳이면 중복 없는 3개의 조합을 표시합니다. 거리는 WGS84 고도값을
+제외한 평균 지구 반지름 기반 대권거리이므로 지표상의 경로 길이이며 3차원 직선거리는 아닙니다. 지도
+타일을 표시할 때 브라우저가 OpenStreetMap에 IP 주소와 대략적인 지도 영역에 해당하는 타일 요청을
+보낼 수 있습니다. 대규모 공개 트래픽에서는 별도 타일 제공자를 구성해야 합니다.
 
 각 LoTSS 위치는 CDS XMatch를 통해 5 arcsec 안의 가장 가까운 SIMBAD 위치 후보와 대응합니다. 후보가
 있으면 3C·NGC·IC 등의 별칭, SIMBAD 유형 코드와 설명, 각거리를 표시하고 친숙한 별칭을 우선 표시명으로
@@ -89,6 +98,7 @@ upstream 검색의 동시 실행 수도 제한하며, 용량을 초과한 새 �
 - [CDS XMatch API](https://cdsxmatch.u-strasbg.fr/xmatch/doc/cross-match-API.html)
 - [SIMBAD](https://simbad.cds.unistra.fr/simbad/)
 - [SIMBAD object type codebook](https://simbad.cds.unistra.fr/Pages/guide/otypes_desc.htx)
+- [OpenStreetMap Standard tile policy](https://operations.osmfoundation.org/policies/tiles/)
 
 ## 구조
 

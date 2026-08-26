@@ -16,8 +16,17 @@ from app.lotss_dr3 import (
 from app.models import LofarSearchResponse
 
 
-def _search(prefix: str | None = None) -> LofarSearch:
-    return LofarSearch(source_prefix=prefix, sort_by="total_flux", sort_direction="desc", limit=10)
+def _search(
+    prefix: str | None = None,
+    morphology_codes: frozenset[str] = frozenset({"S", "M", "C"}),
+) -> LofarSearch:
+    return LofarSearch(
+        source_prefix=prefix,
+        sort_by="total_flux",
+        sort_direction="desc",
+        limit=10,
+        morphology_codes=morphology_codes,  # type: ignore[arg-type]
+    )
 
 
 def _response(search: LofarSearch) -> LofarSearchResponse:
@@ -78,6 +87,24 @@ def test_same_concurrent_query_uses_one_upstream_job_and_returns_copies() -> Non
         assert call_count == 1
         assert first_result == second_result
         assert first_result is not second_result
+
+    asyncio.run(scenario())
+
+
+def test_morphology_code_sets_have_distinct_cache_keys() -> None:
+    async def scenario() -> None:
+        calls: list[frozenset[str]] = []
+
+        async def runner(search: LofarSearch) -> LofarSearchResponse:
+            calls.append(frozenset(search.morphology_codes))
+            return _response(search)
+
+        coordinator = CatalogQueryCoordinator(runner)
+        await coordinator.search(_search(morphology_codes=frozenset({"S", "M"})))
+        await coordinator.search(_search(morphology_codes=frozenset({"M", "S"})))
+        await coordinator.search(_search(morphology_codes=frozenset({"C"})))
+
+        assert calls == [frozenset({"S", "M"}), frozenset({"C"})]
 
     asyncio.run(scenario())
 

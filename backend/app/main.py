@@ -93,6 +93,7 @@ async def search_lotss_dr3_sources(
                 sort_by=params.sort_by,
                 sort_direction=params.sort_direction,
                 limit=params.limit,
+                morphology_codes=frozenset(params.morphology_codes),
             )
         )
     except ValueError as error:

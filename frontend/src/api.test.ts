@@ -7,6 +7,23 @@ afterEach(() => {
 })
 
 describe('LOFAR API errors', () => {
+  it('serializes brightness morphology codes as repeated query parameters', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ sources: [] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ))
+
+    await searchLofarSources({
+      sort_by: 'total_flux',
+      sort_direction: 'desc',
+      limit: 100,
+      morphology_codes: ['S', 'C'],
+    })
+
+    const query = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost').searchParams
+    expect(query.getAll('morphology_codes')).toEqual(['S', 'C'])
+  })
+
   it('replaces a legacy Korean backend detail with an English brightness-search fallback', async () => {
     const legacyKoreanDetail = String.fromCodePoint(0xd55c, 0xae00)
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
@@ -18,6 +35,7 @@ describe('LOFAR API errors', () => {
       sort_by: 'total_flux',
       sort_direction: 'desc',
       limit: 100,
+      morphology_codes: ['S', 'M', 'C'],
     })).rejects.toMatchObject({
       message: 'Check the LOFAR DR3 search parameters and try again.',
       status: 400,
