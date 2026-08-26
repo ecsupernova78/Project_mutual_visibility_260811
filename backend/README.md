@@ -37,6 +37,15 @@ LoTSS adapter는 서버에 고정된
 않습니다. 기본 전체 제한시간은 90초이고 실행 상태는 1·2·3·4·5초의 점진적 간격(이후 최대 5초)으로
 확인합니다.
 
+밝기 순 endpoint는 반복 `simbad_type_categories`도 받습니다. 허용 범주는 `galaxy`, `agn`,
+`quasar`, `blazar`, `radio_galaxy`, `seyfert`, `star`, `pulsar`, `ism`, `radio_source`이며 OR로
+결합합니다. 파라미터 생략은 `All physical types`로서 SIMBAD 제한이 없고 미대응 source도 포함합니다.
+이 값은 LoTSS ADQL에 삽입되지 않습니다. 서버가 TOP N LoTSS 후보를 XMatch로 보강한 뒤 가장 가까운
+5 arcsec 후보의 confirmed primary `otype`에만 적용하며, 후보형(`?` 코드)이나 `other_types`는
+매칭하지 않습니다. 응답의 `candidate_count`는 필터 전 후보 수, `result_count`는 필터 후 수입니다.
+특정 범주가 요청됐는데 XMatch가 unavailable이면 무필터 결과 대신 `502`를 반환합니다. 별칭·설명만
+partial인 경우에는 primary `otype`가 있으므로 필터 결과를 유지합니다.
+
 ASTRON의 `Source_Name`은 대부분 좌표에서 자동 생성한 `ILTJ...` LoTSS 식별자입니다. 응답의
 `S_Code`는 물리적 유형이 아니라 source fitting 형태이며 `S`는 단일 Gaussian, `M`은 복수 Gaussian,
 `C`는 다른 source와 같은 island 안의 단일 Gaussian source입니다. API는 원본 ID와 `S_Code`를

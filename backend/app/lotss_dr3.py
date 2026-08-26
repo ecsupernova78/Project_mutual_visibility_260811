@@ -27,10 +27,12 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 
 from app.models import (
+    SIMBAD_TYPE_CATEGORY_ORDER,
     LofarConeSearchResponse,
     LofarMorphologyDefinition,
     LofarSearchResponse,
     LofarSource,
+    SimbadTypeCategory,
 )
 
 TAP_ASYNC_URL = "https://vo.astron.nl/__system__/tap/run/tap/async"
@@ -74,6 +76,119 @@ MORPHOLOGY_CODEBOOK = [
 ]
 ALL_MORPHOLOGY_CODES: frozenset[MorphologyCode] = frozenset(MORPHOLOGY)
 
+# These are confirmed primary SIMBAD object types. The broad star, ISM, and
+# galaxy groups follow SIMBAD's official ***, AIM, and GGG aliases. Candidate
+# codes ending in '?' are intentionally excluded; they can be added later as
+# an explicit opt-in without silently weakening this physical-type filter.
+_SIMBAD_STARS = frozenset(
+    {
+        "*",
+        "Ma*",
+        "bC*",
+        "sg*",
+        "s*r",
+        "s*y",
+        "s*b",
+        "WR*",
+        "N*",
+        "Psr",
+        "Y*O",
+        "Or*",
+        "TT*",
+        "Ae*",
+        "out",
+        "HH",
+        "MS*",
+        "Be*",
+        "BS*",
+        "SX*",
+        "gD*",
+        "dS*",
+        "Ev*",
+        "RG*",
+        "HS*",
+        "HB*",
+        "RR*",
+        "WV*",
+        "Ce*",
+        "cC*",
+        "C*",
+        "S*",
+        "AB*",
+        "Mi*",
+        "OH*",
+        "pA*",
+        "RV*",
+        "PN",
+        "WD*",
+        "Pe*",
+        "a2*",
+        "RC*",
+        "**",
+        "El*",
+        "EB*",
+        "SB*",
+        "BY*",
+        "RS*",
+        "Sy*",
+        "XB*",
+        "LXB",
+        "HXB",
+        "CV*",
+        "No*",
+        "SN*",
+        "LM*",
+        "BD*",
+        "V*",
+        "Ir*",
+        "Er*",
+        "Ro*",
+        "Pu*",
+        "LP*",
+        "Em*",
+        "PM*",
+        "HV*",
+    }
+)
+_SIMBAD_ISM = frozenset(
+    {"ISM", "SFR", "HII", "Cld", "GNe", "RNe", "MoC", "DNe", "glb", "CGb", "HVC", "cor", "bub", "SNR", "sh", "flt"}
+)
+_SIMBAD_GALAXIES = frozenset(
+    {
+        "G",
+        "LSB",
+        "bCG",
+        "SBG",
+        "H2G",
+        "EmG",
+        "AGN",
+        "SyG",
+        "Sy1",
+        "Sy2",
+        "rG",
+        "LIN",
+        "QSO",
+        "Bla",
+        "BLL",
+        "GiP",
+        "GiG",
+        "GiC",
+        "BiC",
+    }
+)
+SIMBAD_TYPE_CATEGORY_CODES: dict[SimbadTypeCategory, frozenset[str]] = {
+    "galaxy": _SIMBAD_GALAXIES,
+    "agn": frozenset({"AGN", "LIN", "QSO", "Bla", "BLL", "rG", "SyG", "Sy1", "Sy2"}),
+    "quasar": frozenset({"QSO"}),
+    "blazar": frozenset({"Bla", "BLL"}),
+    "radio_galaxy": frozenset({"rG"}),
+    "seyfert": frozenset({"SyG", "Sy1", "Sy2"}),
+    "star": _SIMBAD_STARS,
+    "pulsar": frozenset({"Psr"}),
+    "ism": _SIMBAD_ISM,
+    "radio_source": frozenset({"Rad", "cm", "HI", "Mas", "mm", "mR", "rB", "smm"}),
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -91,6 +206,10 @@ class LofarCatalogBusy(LofarCatalogError):
 
 class LofarEnrichmentError(RuntimeError):
     """A fail-soft SIMBAD enrichment request failed."""
+
+
+class LofarSimbadFilterUnavailable(LofarCatalogError):
+    """A requested physical-type filter cannot be applied without XMatch data."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -794,6 +913,7 @@ async def _search_with_client(
         return LofarSearchResponse(
             source_prefix=search.source_prefix,
             morphology_codes=[code for code in MORPHOLOGY if code in search.morphology_codes],
+            candidate_count=len(sources),
             **common,
         )
     except LofarCatalogError, asyncio.CancelledError:
@@ -821,7 +941,6 @@ async def search_sources(
         return response.model_copy(
             update={"sources": sources, "enrichment_status": status, "enrichment_warning": warning}
         )
-
     async with httpx.AsyncClient(
         headers={"User-Agent": "MutualSky/0.0 LoTSS-DR3 catalog client"},
         follow_redirects=False,
@@ -831,6 +950,47 @@ async def search_sources(
         return response.model_copy(
             update={"sources": sources, "enrichment_status": status, "enrichment_warning": warning}
         )
+
+
+def filter_simbad_type_categories(
+    response: LofarSearchResponse,
+    categories: list[SimbadTypeCategory],
+) -> LofarSearchResponse:
+    """Filter one enriched TOP-N LoTSS candidate pool by SIMBAD primary type.
+
+    An empty list is the explicit "all physical types" state. It preserves
+    sources without a SIMBAD counterpart. Specific categories are OR-combined
+    and match only the nearest positional candidate's confirmed primary otype.
+    """
+
+    canonical = [category for category in SIMBAD_TYPE_CATEGORY_ORDER if category in categories]
+    if len(canonical) != len(categories) or len(set(categories)) != len(categories):
+        raise ValueError("unsupported or duplicate SIMBAD physical-type category")
+
+    candidate_count = len(response.sources)
+    if not canonical:
+        return response.model_copy(
+            update={
+                "simbad_type_categories": [],
+                "candidate_count": candidate_count,
+                "result_count": candidate_count,
+            }
+        )
+    if response.enrichment_status == "unavailable":
+        raise LofarSimbadFilterUnavailable(
+            "SIMBAD physical-type filtering is unavailable because positional matching failed"
+        )
+
+    allowed_codes = frozenset().union(*(SIMBAD_TYPE_CATEGORY_CODES[category] for category in canonical))
+    filtered = [source for source in response.sources if source.object_type_code in allowed_codes]
+    return response.model_copy(
+        update={
+            "simbad_type_categories": canonical,
+            "candidate_count": candidate_count,
+            "result_count": len(filtered),
+            "sources": filtered,
+        }
+    )
 
 
 LofarCatalogResponse = LofarSearchResponse | LofarConeSearchResponse

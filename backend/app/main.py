@@ -15,7 +15,9 @@ from app.lotss_dr3 import (
     LofarCatalogError,
     LofarCatalogTimeout,
     LofarSearch,
+    LofarSimbadFilterUnavailable,
     catalog_query_coordinator,
+    filter_simbad_type_categories,
 )
 from app.models import (
     HealthResponse,
@@ -87,7 +89,7 @@ async def search_lotss_dr3_sources(
     """Browse the public LoTSS DR3 source table through a restricted async TAP adapter."""
 
     try:
-        return await catalog_query_coordinator.search(
+        response = await catalog_query_coordinator.search(
             LofarSearch(
                 source_prefix=params.source_prefix,
                 sort_by=params.sort_by,
@@ -96,6 +98,9 @@ async def search_lotss_dr3_sources(
                 morphology_codes=frozenset(params.morphology_codes),
             )
         )
+        if not isinstance(response, LofarSearchResponse):
+            raise LofarCatalogError("catalog coordinator returned the wrong response type")
+        return filter_simbad_type_categories(response, params.simbad_type_categories)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except LofarCatalogBusy as error:
@@ -108,6 +113,14 @@ async def search_lotss_dr3_sources(
         raise HTTPException(
             status_code=504,
             detail="LOFAR DR3 카탈로그가 제한 시간 안에 응답하지 않았습니다.",
+        ) from error
+    except LofarSimbadFilterUnavailable as error:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "SIMBAD physical-type filtering is temporarily unavailable. "
+                "Try again later or select All physical types."
+            ),
         ) from error
     except LofarCatalogError as error:
         raise HTTPException(

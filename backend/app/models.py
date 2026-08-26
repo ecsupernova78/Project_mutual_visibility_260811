@@ -45,6 +45,31 @@ CatalogSourcePrefix = Annotated[
     ),
 ]
 
+SimbadTypeCategory = Literal[
+    "galaxy",
+    "agn",
+    "quasar",
+    "blazar",
+    "radio_galaxy",
+    "seyfert",
+    "star",
+    "pulsar",
+    "ism",
+    "radio_source",
+]
+SIMBAD_TYPE_CATEGORY_ORDER: tuple[SimbadTypeCategory, ...] = (
+    "galaxy",
+    "agn",
+    "quasar",
+    "blazar",
+    "radio_galaxy",
+    "seyfert",
+    "star",
+    "pulsar",
+    "ism",
+    "radio_source",
+)
+
 
 class ApiModel(BaseModel):
     """Shared strict model configuration for a predictable frontend contract."""
@@ -293,6 +318,7 @@ class LofarSearchParameters(ApiModel):
         min_length=1,
         max_length=3,
     )
+    simbad_type_categories: list[SimbadTypeCategory] = Field(default_factory=list, max_length=10)
 
     @field_validator("limit", mode="before")
     @classmethod
@@ -320,6 +346,16 @@ class LofarSearchParameters(ApiModel):
             raise ValueError("morphology_codes must not contain duplicates")
         return [code for code in ("S", "M", "C") if code in value]
 
+    @field_validator("simbad_type_categories")
+    @classmethod
+    def canonical_simbad_type_categories(
+        cls,
+        value: list[SimbadTypeCategory],
+    ) -> list[SimbadTypeCategory]:
+        if len(set(value)) != len(value):
+            raise ValueError("simbad_type_categories must not contain duplicates")
+        return [category for category in SIMBAD_TYPE_CATEGORY_ORDER if category in value]
+
 
 class LofarSearchResponse(ApiModel):
     catalog: Literal["lofar_dr3"] = "lofar_dr3"
@@ -338,6 +374,8 @@ class LofarSearchResponse(ApiModel):
     morphology_codes: list[Literal["S", "M", "C"]] = Field(
         default_factory=lambda: ["S", "M", "C"],
     )
+    simbad_type_categories: list[SimbadTypeCategory] = Field(default_factory=list)
+    candidate_count: int = Field(ge=0)
     result_count: int
     sources: list[LofarSource]
     enrichment_status: Literal["complete", "partial", "unavailable"] = "complete"

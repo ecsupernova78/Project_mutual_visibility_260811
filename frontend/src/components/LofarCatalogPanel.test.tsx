@@ -2,9 +2,10 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import type { LofarSource } from '../types'
 import { LofarCatalogPanel } from './LofarCatalogPanel'
 
-function makeSource(index: number) {
+function makeSource(index: number): LofarSource {
   const suffix = String(index).padStart(2, '0')
   return {
     id: `lotss-dr3-source-${suffix}`,
@@ -39,12 +40,16 @@ function response({
   sortDirection = 'desc',
   limit = 100,
   sourcePrefix = null,
+  simbadTypeCategories = [],
+  candidateCount = sources.length,
 }: {
   sources?: ReturnType<typeof makeSource>[]
   sortBy?: 'total_flux' | 'peak_flux'
   sortDirection?: 'desc' | 'asc'
   limit?: number
   sourcePrefix?: string | null
+  simbadTypeCategories?: Array<'galaxy' | 'agn' | 'quasar' | 'blazar' | 'radio_galaxy' | 'seyfert' | 'star' | 'pulsar' | 'ism' | 'radio_source'>
+  candidateCount?: number
 } = {}) {
   return new Response(JSON.stringify({
     catalog: 'lofar_dr3',
@@ -60,6 +65,8 @@ function response({
     limit,
     source_prefix: sourcePrefix,
     morphology_codes: ['S', 'M', 'C'],
+    simbad_type_categories: simbadTypeCategories,
+    candidate_count: candidateCount,
     center_ra_deg: null,
     center_dec_deg: null,
     radius_arcmin: null,
@@ -89,7 +96,7 @@ describe('LofarCatalogPanel', () => {
     renderPanel()
 
     const classificationGroup = screen.getByRole('group', {
-      name: /Classification codes.*LoTSS S_Code/,
+      name: /LoTSS radio morphology.*S_Code/,
     })
     const single = within(classificationGroup).getByRole('checkbox', { name: /^S —/ })
     const multiple = within(classificationGroup).getByRole('checkbox', { name: /^M —/ })
@@ -99,7 +106,7 @@ describe('LofarCatalogPanel', () => {
     expect(component).toBeChecked()
 
     await user.click(component)
-    await user.click(screen.getByText('View TAP query'))
+    await user.click(screen.getByText('View LoTSS TAP query'))
     expect(screen.getByText((_, element) => (
       element?.tagName === 'CODE'
       && element.textContent?.includes("S_Code IN ('S', 'M')") === true
@@ -118,15 +125,94 @@ describe('LofarCatalogPanel', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch')
     renderPanel()
     const classificationGroup = screen.getByRole('group', {
-      name: /Classification codes.*LoTSS S_Code/,
+      name: /LoTSS radio morphology.*S_Code/,
     })
-    for (const checkbox of within(classificationGroup).getAllByRole('checkbox')) {
-      await user.click(checkbox)
-    }
+    await user.click(within(classificationGroup).getByRole('checkbox', {
+      name: 'Select all LoTSS S_Code classifications',
+    }))
 
     await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Select at least one LoTSS S_Code classification.',
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('provides a tri-state Select all control for LoTSS S_Code classifications', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    const group = screen.getByRole('group', { name: /LoTSS radio morphology.*S_Code/ })
+    const selectAll = within(group).getByRole('checkbox', {
+      name: 'Select all LoTSS S_Code classifications',
+    })
+
+    expect(selectAll).toBeChecked()
+    await user.click(within(group).getByRole('checkbox', { name: /^C —/ }))
+    expect(selectAll).toBePartiallyChecked()
+    await user.click(selectAll)
+    expect(selectAll).toBeChecked()
+    expect(within(group).getByRole('checkbox', { name: /^C —/ })).toBeChecked()
+  })
+
+  it('filters the TOP candidate pool by selected SIMBAD physical-type categories', async () => {
+    const user = userEvent.setup()
+    const source = makeSource(0)
+    source.object_type_code = 'QSO'
+    source.object_type_label = 'Quasar'
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({
+      sources: [source],
+      simbadTypeCategories: ['quasar'],
+      candidateCount: 10,
+    }))
+    renderPanel()
+    const group = screen.getByRole('group', { name: /SIMBAD physical type/ })
+    const selectAll = within(group).getByRole('checkbox', { name: 'Select all SIMBAD physical types' })
+    const quasars = within(group).getByRole('checkbox', { name: /^Quasars/ })
+
+    expect(selectAll).toBeChecked()
+    expect(quasars).not.toBeChecked()
+    await user.click(quasars)
+    expect(selectAll).not.toBeChecked()
+    expect(quasars).toBeChecked()
+    await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
+
+    expect(await screen.findByText(/1 matches among 10 LoTSS candidates/)).toBeInTheDocument()
+    expect(screen.getByText(/SIMBAD physical type Quasars/)).toBeInTheDocument()
+    const query = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost').searchParams
+    expect(query.getAll('simbad_type_categories')).toEqual(['quasar'])
+  })
+
+  it('lets the user restore the unrestricted SIMBAD All option explicitly', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response())
+    renderPanel()
+    const group = screen.getByRole('group', { name: /SIMBAD physical type/ })
+    const selectAll = within(group).getByRole('checkbox', { name: 'Select all SIMBAD physical types' })
+    const radioGalaxy = within(group).getByRole('checkbox', { name: /^Radio galaxies/ })
+
+    await user.click(radioGalaxy)
+    expect(selectAll).not.toBeChecked()
+    await user.click(selectAll)
+    expect(selectAll).toBeChecked()
+    expect(radioGalaxy).not.toBeChecked()
+    await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
+
+    await screen.findByRole('table')
+    const query = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost').searchParams
+    expect(query.has('simbad_type_categories')).toBe(false)
+    expect(screen.getByText(/SIMBAD physical type All/)).toBeInTheDocument()
+  })
+
+  it('requires either All or at least one SIMBAD physical-type category', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    renderPanel()
+    const group = screen.getByRole('group', { name: /SIMBAD physical type/ })
+    await user.click(within(group).getByRole('checkbox', { name: 'Select all SIMBAD physical types' }))
+    await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Select at least one SIMBAD physical type or choose All physical types.',
     )
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -142,7 +228,7 @@ describe('LofarCatalogPanel', () => {
     await user.selectOptions(screen.getByLabelText('Flux measure'), 'peak_flux')
     await user.selectOptions(screen.getByLabelText('Sort order'), 'asc')
     await user.selectOptions(screen.getByLabelText('Maximum results (TOP)'), '1000')
-    await user.click(screen.getByText('View TAP query'))
+    await user.click(screen.getByText('View LoTSS TAP query'))
     expect(screen.getByText((_, element) => (
       element?.tagName === 'CODE'
       && element.textContent?.includes('SELECT TOP 1000') === true
@@ -178,11 +264,17 @@ describe('LofarCatalogPanel', () => {
     const source = makeSource(0)
     const fetchMock = vi.spyOn(globalThis, 'fetch')
       .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce(response({ sources: [source], sourcePrefix: 'ILTJ1234' }))
+      .mockResolvedValueOnce(response({
+        sources: [source],
+        sourcePrefix: 'ILTJ1234',
+        simbadTypeCategories: ['quasar'],
+      }))
     renderPanel()
 
     await user.type(screen.getByLabelText('Source ID prefix (optional)'), 'ILTJ1234')
-    await user.click(screen.getByText('View TAP query'))
+    await user.click(within(screen.getByRole('group', { name: /SIMBAD physical type/ }))
+      .getByRole('checkbox', { name: /^Quasars/ }))
+    await user.click(screen.getByText('View LoTSS TAP query'))
     expect(screen.getByText((_, element) => (
       element?.tagName === 'CODE'
       && element.textContent?.includes('WHERE Total_flux IS NOT NULL') === true
@@ -198,6 +290,7 @@ describe('LofarCatalogPanel', () => {
     expect(String(fetchMock.mock.calls[1][0])).toBe(String(fetchMock.mock.calls[0][0]))
     const query = new URL(String(fetchMock.mock.calls[1][0]), 'http://localhost').searchParams
     expect(query.get('source_prefix')).toBe('ILTJ1234')
+    expect(query.getAll('simbad_type_categories')).toEqual(['quasar'])
   })
 
   it('locks query parameters during a long TAP request and lets the user stop waiting', async () => {
@@ -217,8 +310,9 @@ describe('LofarCatalogPanel', () => {
     expect(await screen.findByText(/Running an asynchronous ASTRON TAP job/)).toBeInTheDocument()
     expect(screen.getByLabelText('Flux measure')).toBeDisabled()
     expect(screen.getByRole('group', {
-      name: /Classification codes.*LoTSS S_Code/,
+      name: /LoTSS radio morphology.*S_Code/,
     })).toBeDisabled()
+    expect(screen.getByRole('group', { name: /SIMBAD physical type/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Running TAP job…' })).toBeDisabled()
 
     expect(screen.getByText(/stops waiting in the browser only.*server job may continue/)).toBeInTheDocument()
@@ -237,7 +331,7 @@ describe('LofarCatalogPanel', () => {
     const prefixInput = screen.getByLabelText('Source ID prefix (optional)')
     await user.type(prefixInput, "ILTJ' OR 1=1 --")
     expect(prefixInput).toHaveAttribute('aria-invalid', 'true')
-    await user.click(screen.getByText('View TAP query'))
+    await user.click(screen.getByText('View LoTSS TAP query'))
     const preview = screen.getByText((_, element) => (
       element?.tagName === 'CODE'
       && element.textContent?.includes("AND 1=ivo_nocasematch(Source_Name, 'ILTJ'' OR 1=1 --%')") === true
@@ -347,7 +441,7 @@ describe('LofarCatalogPanel', () => {
     await user.click(screen.getByRole('radio', { name: /Cone search/ }))
     await user.type(screen.getByLabelText('Center RA (deg)'), '69.26825')
     await user.type(screen.getByLabelText('Center Dec (deg)'), '29.67052')
-    await user.click(screen.getByText('View TAP query'))
+    await user.click(screen.getByText('View LoTSS TAP query'))
     expect(screen.getByText((_, element) => (
       element?.tagName === 'CODE'
       && element.textContent?.includes("DISTANCE(POINT('ICRS', RA, DEC)") === true

@@ -15,6 +15,7 @@ from app.lotss_dr3 import (
     LofarCatalogError,
     LofarCatalogTimeout,
     LofarSearch,
+    LofarSimbadFilterUnavailable,
     _apply_counterparts,
     _build_adql,
     _configured_job_timeout,
@@ -23,6 +24,7 @@ from app.lotss_dr3 import (
     _enrich_sources,
     _request,
     _validated_job_url,
+    filter_simbad_type_categories,
     search_sources,
 )
 from app.models import LofarConeSearchResponse, LofarSearchResponse, LofarSource
@@ -582,6 +584,124 @@ def test_simbad_tap_malformed_http_200_is_partial_enrichment(malformed_stage: st
     assert enriched.object_type_description is None
 
 
+def test_simbad_physical_type_categories_filter_the_enriched_candidate_pool_in_flux_order() -> None:
+    def source(source_id: str, object_type_code: str | None, flux: float) -> LofarSource:
+        return LofarSource(
+            id=f"lotss-dr3-{source_id}",
+            source_id=source_id,
+            name=source_id,
+            ra_deg=0,
+            dec_deg=0,
+            ra_hms="00:00:00.00",
+            dec_dms="+00:00:00.00",
+            total_flux_mjy=flux,
+            peak_flux_mjy=flux,
+            object_type_code=object_type_code,
+        )
+
+    candidates = [
+        source("galaxy", "G", 30),
+        source("quasar", "QSO", 20),
+        source("candidate", "Q?", 15),
+        source("pulsar", "Psr", 10),
+        source("unmatched", None, 5),
+    ]
+    response = LofarSearchResponse(
+        sort_by="total_flux",
+        sort_direction="desc",
+        limit=10,
+        source_prefix=None,
+        candidate_count=len(candidates),
+        result_count=len(candidates),
+        sources=candidates,
+    )
+
+    unfiltered = filter_simbad_type_categories(response, [])
+    assert unfiltered.sources == candidates
+    assert unfiltered.simbad_type_categories == []
+
+    filtered = filter_simbad_type_categories(response, ["galaxy", "pulsar"])
+    assert [item.source_id for item in filtered.sources] == ["galaxy", "quasar", "pulsar"]
+    assert filtered.candidate_count == 5
+    assert filtered.result_count == 3
+    assert filtered.simbad_type_categories == ["galaxy", "pulsar"]
+    assert "candidate" not in {item.source_id for item in filtered.sources}
+
+
+def test_simbad_physical_type_filter_fails_closed_without_xmatch_data() -> None:
+    response = LofarSearchResponse(
+        sort_by="total_flux",
+        sort_direction="desc",
+        limit=10,
+        source_prefix=None,
+        candidate_count=0,
+        result_count=0,
+        sources=[],
+        enrichment_status="unavailable",
+    )
+    with pytest.raises(LofarSimbadFilterUnavailable):
+        filter_simbad_type_categories(response, ["quasar"])
+
+
+def test_quasar_and_blazar_categories_keep_distinct_primary_types() -> None:
+    def source(source_id: str, object_type_code: str) -> LofarSource:
+        return LofarSource(
+            id=f"lotss-dr3-{source_id}",
+            source_id=source_id,
+            name=source_id,
+            ra_deg=0,
+            dec_deg=0,
+            ra_hms="00:00:00.00",
+            dec_dms="+00:00:00.00",
+            total_flux_mjy=1,
+            peak_flux_mjy=1,
+            object_type_code=object_type_code,
+        )
+
+    candidates = [source("qso", "QSO"), source("blazar", "Bla"), source("bl-lac", "BLL")]
+    response = LofarSearchResponse(
+        sort_by="total_flux",
+        sort_direction="desc",
+        limit=10,
+        source_prefix=None,
+        candidate_count=3,
+        result_count=3,
+        sources=candidates,
+    )
+
+    assert [item.source_id for item in filter_simbad_type_categories(response, ["quasar"]).sources] == ["qso"]
+    assert [item.source_id for item in filter_simbad_type_categories(response, ["blazar"]).sources] == [
+        "blazar",
+        "bl-lac",
+    ]
+
+
+def test_simbad_physical_type_filter_accepts_partial_alias_enrichment() -> None:
+    source = LofarSource(
+        id="lotss-dr3-source",
+        source_id="source",
+        name="source",
+        ra_deg=0,
+        dec_deg=0,
+        ra_hms="00:00:00.00",
+        dec_dms="+00:00:00.00",
+        total_flux_mjy=1,
+        peak_flux_mjy=1,
+        object_type_code="Sy1",
+    )
+    response = LofarSearchResponse(
+        sort_by="total_flux",
+        sort_direction="desc",
+        limit=10,
+        source_prefix=None,
+        candidate_count=1,
+        result_count=1,
+        sources=[source],
+        enrichment_status="partial",
+    )
+    assert filter_simbad_type_categories(response, ["seyfert"]).sources == [source]
+
+
 def test_catalog_endpoint_defaults_to_global_async_browse(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[LofarSearch] = []
 
@@ -592,6 +712,7 @@ def test_catalog_endpoint_defaults_to_global_async_browse(client: TestClient, mo
             sort_direction=search.sort_direction,
             limit=search.limit,
             source_prefix=search.source_prefix,
+            candidate_count=0,
             result_count=0,
             sources=[],
         )
@@ -616,6 +737,8 @@ def test_catalog_endpoint_defaults_to_global_async_browse(client: TestClient, mo
         "limit": 100,
         "source_prefix": None,
         "morphology_codes": ["S", "M", "C"],
+        "simbad_type_categories": [],
+        "candidate_count": 0,
         "result_count": 0,
         "sources": [],
         "enrichment_status": "complete",
@@ -637,6 +760,7 @@ def test_catalog_endpoint_accepts_repeated_morphology_codes_and_canonicalizes_or
             limit=search.limit,
             source_prefix=search.source_prefix,
             morphology_codes=[code for code in ("S", "M", "C") if code in search.morphology_codes],
+            candidate_count=0,
             result_count=0,
             sources=[],
         )
@@ -650,6 +774,69 @@ def test_catalog_endpoint_accepts_repeated_morphology_codes_and_canonicalizes_or
     assert response.status_code == 200
     assert captured[0].morphology_codes == frozenset({"S", "M"})
     assert response.json()["morphology_codes"] == ["S", "M"]
+
+
+def test_catalog_endpoint_accepts_repeated_simbad_categories_and_canonicalizes_order(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_search(search: LofarSearch) -> LofarSearchResponse:
+        return LofarSearchResponse(
+            sort_by=search.sort_by,
+            sort_direction=search.sort_direction,
+            limit=search.limit,
+            source_prefix=search.source_prefix,
+            candidate_count=0,
+            result_count=0,
+            sources=[],
+        )
+
+    monkeypatch.setattr("app.main.catalog_query_coordinator.search", fake_search)
+    response = client.get(
+        "/api/v1/catalogs/lotss-dr3/sources",
+        params=[("simbad_type_categories", "pulsar"), ("simbad_type_categories", "galaxy")],
+    )
+
+    assert response.status_code == 200
+    assert response.json()["simbad_type_categories"] == ["galaxy", "pulsar"]
+    assert response.json()["candidate_count"] == 0
+
+
+def test_catalog_endpoint_fails_closed_when_requested_simbad_filter_is_unavailable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_search(search: LofarSearch) -> LofarSearchResponse:
+        return LofarSearchResponse(
+            sort_by=search.sort_by,
+            sort_direction=search.sort_direction,
+            limit=search.limit,
+            source_prefix=search.source_prefix,
+            candidate_count=0,
+            result_count=0,
+            sources=[],
+            enrichment_status="unavailable",
+        )
+
+    monkeypatch.setattr("app.main.catalog_query_coordinator.search", fake_search)
+    response = client.get(
+        "/api/v1/catalogs/lotss-dr3/sources",
+        params={"simbad_type_categories": "quasar"},
+    )
+
+    assert response.status_code == 502
+    assert "physical-type filtering is temporarily unavailable" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        [("simbad_type_categories", "")],
+        [("simbad_type_categories", "unknown")],
+        [("simbad_type_categories", "galaxy"), ("simbad_type_categories", "galaxy")],
+    ],
+)
+def test_catalog_endpoint_rejects_invalid_simbad_categories(client: TestClient, params: list[tuple[str, str]]) -> None:
+    response = client.get("/api/v1/catalogs/lotss-dr3/sources", params=params)
+    assert response.status_code == 422
 
 
 @pytest.mark.parametrize(
@@ -677,6 +864,7 @@ def test_catalog_endpoint_coerces_allowed_limit_query_strings(
             sort_direction=search.sort_direction,
             limit=search.limit,
             source_prefix=search.source_prefix,
+            candidate_count=0,
             result_count=0,
             sources=[],
         )

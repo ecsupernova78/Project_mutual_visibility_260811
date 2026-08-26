@@ -35,6 +35,7 @@ def _response(search: LofarSearch) -> LofarSearchResponse:
         sort_direction=search.sort_direction,
         limit=search.limit,
         source_prefix=search.source_prefix,
+        candidate_count=0,
         result_count=0,
         sources=[],
     )
@@ -198,6 +199,7 @@ def test_degraded_enrichment_response_is_not_cached() -> None:
                 sort_direction=search.sort_direction,
                 limit=search.limit,
                 source_prefix=search.source_prefix,
+                candidate_count=0,
                 result_count=0,
                 sources=[],
                 enrichment_status="unavailable",

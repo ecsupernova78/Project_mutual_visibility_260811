@@ -17,7 +17,7 @@ npm run test --workspace frontend
 
 지도는 `https://tile.openstreetmap.org`의 Standard 타일을 요청하며 지도 안의 OpenStreetMap attribution을 유지합니다. 이 과정에서 브라우저의 IP 주소와 현재 지도 영역에 해당하는 타일 요청이 OpenStreetMap으로 전송될 수 있습니다. 타일을 사전 수집하거나 오프라인 cache하지 않으며, 공개 트래픽이 커지면 별도 tile provider를 사용해야 합니다.
 
-`LOFAR DR3 카탈로그` 탭은 ASTRON 비동기 TAP 서비스를 통해 `lotss_dr3.main_sources`를 조회합니다. 카탈로그 전체의 144 MHz 밝기 순 목록과 ICRS 중심 좌표·반경을 지정하는 cone search를 전환할 수 있으며, 밝기 순 검색에서는 `S_Code` S/M/C를 체크박스로 선택해 TAP 쿼리 단계에서 형태 코드를 제한할 수 있습니다. 정렬 기준·방향과 TOP 10–1000개 범위를 선택하고 실제 실행될 고정 ADQL을 읽기 전용으로 미리 볼 수 있습니다. 각 검색 방식의 입력·결과·페이지는 독립적으로 유지되고, 한 번 받은 결과는 브라우저에서 25개씩 나누어 표시하므로 페이지 이동은 TAP 작업을 다시 만들지 않습니다.
+`LOFAR DR3 카탈로그` 탭은 ASTRON 비동기 TAP 서비스를 통해 `lotss_dr3.main_sources`를 조회합니다. 카탈로그 전체의 144 MHz 밝기 순 목록과 ICRS 중심 좌표·반경을 지정하는 cone search를 전환할 수 있으며, 밝기 순 검색에서는 `S_Code` S/M/C를 개별 또는 전체 선택해 TAP 쿼리 단계에서 형태 코드를 제한할 수 있습니다. SIMBAD 물리 유형은 별도의 `All physical types` 또는 Galaxy·AGN·Quasar·Blazar·Radio galaxy·Seyfert·Star·Pulsar·ISM·Radio source 범주로 선택합니다. 특정 물리 유형은 TOP N LoTSS 후보를 위치 대응한 뒤 confirmed primary type에 적용하므로 결과 수가 N보다 작을 수 있습니다. 정렬 기준·방향과 TOP 10–1000개 범위를 선택하고 실제 실행될 고정 LoTSS ADQL을 읽기 전용으로 미리 볼 수 있습니다. 각 검색 방식의 입력·결과·페이지는 독립적으로 유지되고, 한 번 받은 결과는 브라우저에서 25개씩 나누어 표시하므로 페이지 이동은 TAP 작업을 다시 만들지 않습니다.
 
 LoTSS의 `ILTJ...` 좌표 기반 ID와 `S/M/C` 전파 형태 코드는 항상 보존합니다. 5″ 이내 SIMBAD 위치 후보가 있으면 3C·NGC·IC 같은 친숙한 별칭을 우선 표시하고 SIMBAD 천체 유형, 대응 거리와 신뢰 구간을 함께 보여 줍니다. 이는 위치 기반 후보이지 확정 식별은 아닙니다. 외부 이름·유형 보강에 실패해도 원래 LoTSS 검색 결과와 선택 기능은 유지됩니다.
 

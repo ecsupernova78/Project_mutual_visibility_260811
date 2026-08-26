@@ -38,6 +38,17 @@ export type LofarSortField = 'total_flux' | 'peak_flux'
 export type LofarConeSortField = 'distance' | LofarSortField
 export type SortDirection = 'desc' | 'asc'
 export type LofarMorphologyCode = 'S' | 'M' | 'C'
+export type SimbadTypeCategory =
+  | 'galaxy'
+  | 'agn'
+  | 'quasar'
+  | 'blazar'
+  | 'radio_galaxy'
+  | 'seyfert'
+  | 'star'
+  | 'pulsar'
+  | 'ism'
+  | 'radio_source'
 
 export interface LofarMorphologyDefinition {
   code: 'S' | 'M' | 'C'
@@ -51,6 +62,7 @@ export interface LofarSearchParams {
   sort_direction: SortDirection
   limit: number
   morphology_codes: LofarMorphologyCode[]
+  simbad_type_categories?: SimbadTypeCategory[]
 }
 
 export interface LofarConeSearchParams {
@@ -77,6 +89,8 @@ export interface LofarSearchResponse {
   limit: number
   source_prefix: string | null
   morphology_codes?: LofarMorphologyCode[] | null
+  simbad_type_categories?: SimbadTypeCategory[] | null
+  candidate_count?: number
   center_ra_deg: number | null
   center_dec_deg: number | null
   radius_arcmin: number | null

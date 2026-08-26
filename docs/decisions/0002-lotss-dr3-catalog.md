@@ -47,6 +47,15 @@ source catalogue에는 약 1,366만 행이 있으므로 브라우저에서 전�
   SIMBAD 별칭·유형 조회만 실패하면 후보 정보와 `partial` 상태를 반환합니다. 보강 서비스 장애가
   ASTRON 검색 자체를 실패시키지 않는 fail-soft 계약입니다.
 - 보강의 각 외부 단계에는 `CATALOG_ENRICHMENT_TIMEOUT_SECONDS` 제한시간을 별도로 적용합니다.
+- 밝기 순 검색의 `S_Code`는 S/M/C를 모두 선택하거나 부분 선택할 수 있습니다. SIMBAD 물리 유형은
+  사용 편의를 위한 고정 범주를 OR로 결합하며, `All physical types`는 파라미터 생략과 동일한 무제한
+  상태로서 미대응 LoTSS source도 포함합니다.
+- SIMBAD 유형은 LoTSS table에 없으므로 ASTRON ADQL을 바꾸지 않습니다. 먼저 밝기 순 TOP N 후보를
+  얻은 다음 5 arcsec 최근접 XMatch 후보의 confirmed primary `otype`로 후처리합니다. 따라서
+  `candidate_count`와 필터 후 `result_count`를 함께 반환하고 결과 수 N개를 보장하지 않습니다.
+- 물리 유형 필터가 활성화된 상태에서 XMatch가 실패하면 과학적으로 다른 무필터 결과를 반환하지
+  않고 fail-closed 오류로 종료합니다. 별칭·설명 단계만 실패한 partial 결과는 primary `otype`가
+  이미 있으므로 계속 필터할 수 있습니다.
 
 공개 ASTRON·CDS 조회에는 계정이나 API key가 필요하지 않습니다. ASTRON의 본 source 조회가
 지연되거나 잘못된 응답을 반환하면 검색을 제어된 오류로 종료합니다. 반면 XMatch·SIMBAD 보강의

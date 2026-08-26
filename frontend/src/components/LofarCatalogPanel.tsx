@@ -9,6 +9,7 @@ import type {
   LofarSearchResponse,
   LofarSortField,
   LofarSource,
+  SimbadTypeCategory,
   SortDirection,
 } from '../types'
 
@@ -40,6 +41,26 @@ const MORPHOLOGY_OPTIONS: Array<{
   { code: 'M', label: 'Multiple Gaussian', description: 'Multiple fitted Gaussian components' },
   { code: 'C', label: 'Shared island', description: 'Single Gaussian in a shared source island' },
 ]
+const SIMBAD_TYPE_OPTIONS: Array<{
+  category: SimbadTypeCategory
+  label: string
+  description: string
+}> = [
+  { category: 'galaxy', label: 'Galaxies', description: 'Official SIMBAD GGG galaxy family' },
+  { category: 'agn', label: 'Active galactic nuclei', description: 'AGN, LINER, quasar, blazar, radio-galaxy, and Seyfert types' },
+  { category: 'quasar', label: 'Quasars', description: 'Confirmed SIMBAD QSO primary type' },
+  { category: 'blazar', label: 'Blazars', description: 'Confirmed blazar and BL Lac primary types' },
+  { category: 'radio_galaxy', label: 'Radio galaxies', description: 'Confirmed SIMBAD radio-galaxy primary type' },
+  { category: 'seyfert', label: 'Seyfert galaxies', description: 'Seyfert, Seyfert 1, and Seyfert 2 primary types' },
+  { category: 'star', label: 'Stars', description: 'Official SIMBAD *** stellar family' },
+  { category: 'pulsar', label: 'Pulsars', description: 'Confirmed SIMBAD pulsar primary type' },
+  { category: 'ism', label: 'Interstellar-medium objects', description: 'Official SIMBAD AIM interstellar-medium family' },
+  { category: 'radio_source', label: 'Radio sources', description: 'Radio-emitting sources whose physical nature is otherwise unknown' },
+]
+
+function simbadCategoryLabel(category: SimbadTypeCategory) {
+  return SIMBAD_TYPE_OPTIONS.find((option) => option.category === category)?.label ?? category
+}
 
 function englishCatalogText(value: string | null | undefined) {
   return value && !HANGUL_PATTERN.test(value) ? value : null
@@ -150,6 +171,8 @@ export function LofarCatalogPanel({
   const [morphologyCodes, setMorphologyCodes] = useState<Set<LofarMorphologyCode>>(
     () => new Set(MORPHOLOGY_OPTIONS.map((option) => option.code)),
   )
+  const [simbadTypeSelection, setSimbadTypeSelection] = useState<Set<SimbadTypeCategory> | null>(null)
+  const morphologySelectAllRef = useRef<HTMLInputElement>(null)
   const [coneRa, setConeRa] = useState('')
   const [coneDec, setConeDec] = useState('')
   const [coneRadius, setConeRadius] = useState('5')
@@ -172,6 +195,12 @@ export function LofarCatalogPanel({
   const selectedMorphologyCodes = MORPHOLOGY_OPTIONS
     .map((option) => option.code)
     .filter((code) => morphologyCodes.has(code))
+  const allSimbadTypes = simbadTypeSelection === null
+  const selectedSimbadTypeCategories = simbadTypeSelection === null
+    ? []
+    : SIMBAD_TYPE_OPTIONS
+        .map((option) => option.category)
+        .filter((category) => simbadTypeSelection.has(category))
   const adqlPreview = mode === 'brightness'
     ? buildBrightnessAdqlPreview(
         sourcePrefix,
@@ -183,6 +212,15 @@ export function LofarCatalogPanel({
     : buildConeAdqlPreview(coneRa, coneDec, coneRadius, coneSortBy, coneSortDirection, coneLimit)
 
   useEffect(() => () => activeRequest.current?.controller.abort(), [])
+
+  useEffect(() => {
+    if (morphologySelectAllRef.current) {
+      morphologySelectAllRef.current.indeterminate = (
+        selectedMorphologyCodes.length > 0
+        && selectedMorphologyCodes.length < MORPHOLOGY_OPTIONS.length
+      )
+    }
+  }, [selectedMorphologyCodes.length])
 
   const patchModeState = (targetMode: SearchMode, patch: Partial<ModeState>) => {
     setModeStates((current) => ({
@@ -237,6 +275,15 @@ export function LofarCatalogPanel({
         })
         return
       }
+      if (!allSimbadTypes && selectedSimbadTypeCategories.length === 0) {
+        patchModeState(mode, {
+          error: 'Select at least one SIMBAD physical type or choose All physical types.',
+          notice: null,
+          canRetry: false,
+          status: 'error',
+        })
+        return
+      }
       if (sourcePrefixInvalid) {
         patchModeState(mode, {
           error: 'The Source ID prefix must begin with a letter or number and contain only letters, numbers, +, periods, and hyphens.',
@@ -254,6 +301,9 @@ export function LofarCatalogPanel({
           sort_direction: sortDirection,
           limit,
           morphology_codes: selectedMorphologyCodes,
+          ...(selectedSimbadTypeCategories.length > 0
+            ? { simbad_type_categories: selectedSimbadTypeCategories }
+            : {}),
         },
       })
       return
@@ -408,8 +458,25 @@ export function LofarCatalogPanel({
                 className="catalog-classification-filter"
                 disabled={activeState.status === 'loading'}
               >
-                <legend>Classification codes <span>(LoTSS S_Code)</span></legend>
-                <div>
+                <legend>LoTSS radio morphology <span>(S_Code)</span></legend>
+                <div className="catalog-filter-grid">
+                  <label className="catalog-filter-all">
+                    <input
+                      ref={morphologySelectAllRef}
+                      type="checkbox"
+                      checked={selectedMorphologyCodes.length === MORPHOLOGY_OPTIONS.length}
+                      onChange={() => {
+                        setMorphologyCodes((current) => (
+                          current.size === MORPHOLOGY_OPTIONS.length
+                            ? new Set()
+                            : new Set(MORPHOLOGY_OPTIONS.map((option) => option.code))
+                        ))
+                      }}
+                      aria-label="Select all LoTSS S_Code classifications"
+                    />
+                    <strong>Select all</strong>
+                    <small>S + M + C</small>
+                  </label>
                   {MORPHOLOGY_OPTIONS.map((option) => (
                     <label key={option.code}>
                       <input
@@ -429,6 +496,48 @@ export function LofarCatalogPanel({
                     </label>
                   ))}
                 </div>
+              </fieldset>
+              <fieldset
+                className="catalog-classification-filter catalog-simbad-filter"
+                disabled={activeState.status === 'loading'}
+              >
+                <legend>SIMBAD physical type <span>(nearest 5″ positional candidate)</span></legend>
+                <div className="catalog-filter-grid">
+                  <label className="catalog-filter-all">
+                    <input
+                      type="checkbox"
+                      checked={allSimbadTypes}
+                      onChange={(event) => {
+                        setSimbadTypeSelection(event.currentTarget.checked ? null : new Set())
+                      }}
+                      aria-label="Select all SIMBAD physical types"
+                    />
+                    <strong>All physical types</strong>
+                    <small>No SIMBAD restriction; includes sources without a counterpart</small>
+                  </label>
+                  {SIMBAD_TYPE_OPTIONS.map((option) => (
+                    <label key={option.category}>
+                      <input
+                        type="checkbox"
+                        checked={!allSimbadTypes && simbadTypeSelection.has(option.category)}
+                        onChange={() => {
+                          setSimbadTypeSelection((current) => {
+                            const next = new Set(current ?? [])
+                            if (next.has(option.category)) next.delete(option.category)
+                            else next.add(option.category)
+                            return next
+                          })
+                        }}
+                      />
+                      <strong>{option.label}</strong>
+                      <small>{option.description}</small>
+                    </label>
+                  ))}
+                </div>
+                <p className="catalog-filter-note">
+                  Categories are OR-combined and include confirmed primary SIMBAD types only. Filtering is applied to
+                  the LoTSS TOP candidates after positional cross-matching, so fewer than the requested TOP may remain.
+                </p>
               </fieldset>
             </>
           ) : (
@@ -501,14 +610,17 @@ export function LofarCatalogPanel({
 
           <p id="lofar-search-help" className="catalog-form-help">
             {mode === 'brightness'
-              ? 'Leave the Source ID prefix blank to retrieve the top sources across the catalog. S_Code values describe fitted radio morphology, not physical object type.'
+              ? 'Leave the Source ID prefix blank to retrieve the top sources across the catalog. S_Code describes fitted radio morphology; SIMBAD categories describe the primary physical type of a positional candidate.'
               : 'Enter decimal-degree ICRS coordinates. The radius may range from 0.1 to 60 arcmin; results are initially ordered by angular separation.'}
             {' '}Results are displayed in pages of 25 sources.
           </p>
           <details className="catalog-query-preview">
-            <summary>View TAP query</summary>
+            <summary>View LoTSS TAP query</summary>
             <pre><code>{adqlPreview}</code></pre>
-            <p>Familiar names and physical classifications are added through positional cross-matching with SIMBAD.</p>
+            <p>
+              Familiar names and physical classifications are added through positional cross-matching with SIMBAD.
+              Any SIMBAD physical-type filter is applied after this LoTSS TAP query.
+            </p>
           </details>
           <div className="catalog-search-actions">
             <button className="catalog-search-button" type="submit" disabled={activeState.status === 'loading'}>
@@ -589,6 +701,9 @@ function CatalogResults({
   const rangeEnd = Math.min(safePage * LOCAL_PAGE_SIZE, sources.length)
   const pageSources = sources.slice(rangeStart === 0 ? 0 : rangeStart - 1, rangeEnd)
   const isCone = mode === 'cone'
+  const simbadCategories = response?.simbad_type_categories ?? []
+  const hasSimbadFilter = !isCone && simbadCategories.length > 0
+  const candidateCount = response?.candidate_count ?? response?.result_count ?? 0
 
   return (
     <section className="catalog-results-card" aria-labelledby="lofar-results-title" aria-busy={status === 'loading'}>
@@ -597,7 +712,14 @@ function CatalogResults({
           <p className="eyebrow">Query results</p>
           <h2 id="lofar-results-title">{isCone ? 'Cone search results' : 'Brightness-ranked catalog results'}</h2>
         </div>
-        {response && <span>{response.result_count} returned · TOP {response.limit}</span>}
+        {response && (
+          <span>
+            {hasSimbadFilter
+              ? `${response.result_count} matched / ${candidateCount} candidates`
+              : `${response.result_count} returned`}
+            {' '}· TOP {response.limit}
+          </span>
+        )}
       </header>
 
       {status === 'idle' && !response && (
@@ -621,7 +743,11 @@ function CatalogResults({
       {status === 'success' && response && sources.length === 0 && (
         <div className="catalog-message">
           <strong>No matching sources found.</strong>
-          <span>{isCone ? 'Increase the search radius or check the center coordinates.' : 'Shorten or clear the Source ID prefix and try again.'}</span>
+          <span>{isCone
+            ? 'Increase the search radius or check the center coordinates.'
+            : hasSimbadFilter
+              ? 'Select additional SIMBAD physical types or choose All physical types, then try again.'
+              : 'Shorten or clear the Source ID prefix and try again.'}</span>
         </div>
       )}
 
@@ -634,8 +760,14 @@ function CatalogResults({
               ? ` · center ${response.center_ra_deg ?? '—'}°, ${response.center_dec_deg ?? '—'}° · radius ${response.radius_arcmin ?? '—'}′`
               : response.source_prefix ? ` · Source ID “${response.source_prefix}”` : ' · entire catalog'}
             {!isCone && response.morphology_codes?.length
-              ? ` · S_Code ${response.morphology_codes.join(', ')}`
+              ? ` · S_Code ${response.morphology_codes.length === MORPHOLOGY_OPTIONS.length ? 'All (S, M, C)' : response.morphology_codes.join(', ')}`
               : ''}
+            {!isCone
+              ? ` · SIMBAD physical type ${hasSimbadFilter
+                ? simbadCategories.map(simbadCategoryLabel).join(', ')
+                : 'All'}`
+              : ''}
+            {hasSimbadFilter ? ` · ${response.result_count} matches among ${candidateCount} LoTSS candidates` : ''}
           </p>
           <EnrichmentNotice response={response} />
           <SourceTypeLegend sources={sources} morphologyCodebook={response.morphology_codebook} />

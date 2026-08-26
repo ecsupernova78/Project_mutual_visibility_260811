@@ -87,6 +87,14 @@ Observing Sites 지도는 API key 없이 Leaflet과 OpenStreetMap Standard 타�
 유지합니다. XMatch 또는 SIMBAD 보강이 실패해도 ASTRON LoTSS 결과는 유지하며, 사용 불가 또는 일부
 완료 상태를 함께 알립니다.
 
+밝기 순 검색에서는 LoTSS `S_Code`를 S/M/C별로 선택하거나 모두 선택할 수 있고, SIMBAD 물리 유형은
+Galaxy·AGN·Quasar·Blazar·Radio galaxy·Seyfert·Star·Pulsar·ISM·Radio source 범주를 OR 조건으로
+선택할 수 있습니다. SIMBAD의 `All physical types`는 유형 제한을 적용하지 않으며 위치 대응이 없는
+LoTSS source도 유지합니다. 특정 범주는 ASTRON의 밝기 순 `TOP N` 후보를 가져온 뒤 가장 가까운 5
+arcsec SIMBAD 위치 후보의 confirmed primary `otype`에 적용되므로, 반환 행 수가 N보다 작을 수 있고
+이는 선택 유형 전체에서 전역 밝기 상위 N개를 찾는 cross-catalog join은 아닙니다. 특정 유형 필터 중
+XMatch가 실패하면 무필터 결과로 대체하지 않고 검색 오류를 반환합니다.
+
 서버는 같은 검색 요청을 하나의 TAP job으로 합치고 성공 결과를 잠시 캐시합니다. 서로 다른
 upstream 검색의 동시 실행 수도 제한하며, 용량을 초과한 새 검색에는 잠시 후 재시도하도록
 안내합니다. 이 보호 상태는 API process별로 관리됩니다.
