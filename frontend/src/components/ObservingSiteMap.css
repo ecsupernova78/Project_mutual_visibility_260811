@@ -1,0 +1,59 @@
+.site-map-canvas-frame {
+  min-width: 0;
+  min-height: 430px;
+  position: relative;
+}
+
+.site-map-canvas-frame .site-map-canvas {
+  height: 100%;
+}
+
+.site-map-load-error {
+  max-width: calc(100% - 40px);
+  margin: 0;
+  padding: 10px 13px;
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  border: 1px solid rgba(173, 66, 73, .34);
+  border-radius: 9px;
+  color: #6d252c;
+  background: rgba(255, 247, 247, .94);
+  box-shadow: 0 7px 22px rgba(16, 36, 49, .16);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.observing-site-map-marker-host {
+  width: 36px;
+  height: 44px;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.observing-site-map-marker-host:focus-visible {
+  outline: 3px solid #102431;
+  outline-offset: 3px;
+}
+
+.site-map-canvas-frame .maplibregl-ctrl-attrib {
+  font-size: 11px;
+}
+
+@media (max-width: 860px) {
+  .site-map-canvas-frame {
+    min-height: 390px;
+  }
+}
+
+@media (max-width: 560px) {
+  .site-map-canvas-frame {
+    min-height: 330px;
+  }
+}

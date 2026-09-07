@@ -9,8 +9,8 @@ import {
 
 import { calculateVisibility } from './api'
 import { AltitudeChart } from './components/AltitudeChart'
+import { CatalogPanel } from './components/CatalogPanel'
 import { getTargetColor } from './components/chartStyles'
-import { LofarCatalogPanel } from './components/LofarCatalogPanel'
 import { ObservingSitePanel } from './components/ObservingSitePanel'
 import { VisibilityOverviewChart } from './components/VisibilityOverviewChart'
 import {
@@ -23,7 +23,7 @@ import {
 import { orderedSelectedSites } from './observingSiteGeometry'
 import type {
   CustomTargetSnapshot,
-  LofarSource,
+  ExternalCatalogSource,
   ObserverLocation,
   VisibilityRequest,
   VisibilityResponse,
@@ -37,12 +37,12 @@ interface CatalogTarget {
   coordinate: string
 }
 
-type AppTab = 'visibility' | 'sites' | 'lofar'
+type AppTab = 'visibility' | 'sites' | 'catalog'
 
 const TAB_IDS: Record<AppTab, string> = {
   visibility: 'visibility-tab',
   sites: 'observing-sites-tab',
-  lofar: 'lofar-catalog-tab',
+  catalog: 'catalog-tab',
 }
 
 const MAXIMUM_TARGET_COUNT = 25
@@ -96,7 +96,7 @@ function englishCatalogText(value: string | null | undefined) {
   return value && !HANGUL_PATTERN.test(value) ? value : null
 }
 
-function snapshotLofarSource(source: LofarSource): CustomTargetSnapshot {
+function snapshotCatalogSource(source: ExternalCatalogSource): CustomTargetSnapshot {
   const morphologyLabel = englishCatalogText(source.morphology_label)
   const morphologyDescription = englishCatalogText(source.morphology_description)
   const objectTypeLabel = englishCatalogText(source.object_type_label)
@@ -119,6 +119,11 @@ function snapshotLofarSource(source: LofarSource): CustomTargetSnapshot {
     ...(source.morphology_code == null ? {} : { morphology_code: source.morphology_code }),
     ...(morphologyLabel == null ? {} : { morphology_label: morphologyLabel }),
     ...(morphologyDescription == null ? {} : { morphology_description: morphologyDescription }),
+    ...(source.catalog !== 'vlass' ? {} : {
+      duplicate_flag: source.duplicate_flag,
+      quality_flag: source.quality_flag,
+      main_sample: source.main_sample,
+    }),
     ...(source.counterpart_name == null ? {} : { counterpart_name: source.counterpart_name }),
     ...((source.counterpart_aliases?.length ?? 0) === 0 ? {} : { counterpart_aliases: source.counterpart_aliases }),
     ...(source.object_type_code == null ? {} : { object_type_code: source.object_type_code }),
@@ -453,17 +458,17 @@ function Results({
             {target.aliases.length > 0 && (
               <p className="alias-list">{target.aliases.join(' · ')}</p>
             )}
-            {target.catalog === 'lofar_dr3' && (
+            {(target.catalog === 'lofar_dr3' || target.catalog === 'vlass') && (
               <div className="catalog-source-details">
                 <p className="catalog-source-meta">
-                  LoTSS ID {target.catalog_source_id}
+                  {target.catalog === 'lofar_dr3' ? 'LoTSS' : 'VLASS'} ID {target.catalog_source_id}
                   <span aria-hidden="true"> · </span>
                   Total flux {formatRadioFlux(target.total_flux_mjy, 'mJy')}
                   <span aria-hidden="true"> · </span>
                   Peak flux {formatRadioFlux(target.peak_flux_mjy, 'mJy/beam')}
                 </p>
                 <p className="catalog-source-meta">
-                  LoTSS radio morphology {target.morphology_code
+                  {target.catalog === 'lofar_dr3' ? 'LoTSS radio morphology' : 'VLASS component type'} {target.morphology_code
                     ? `${target.morphology_code} — ${target.morphology_label ?? 'No description'}`
                     : 'Unclassified'}
                   <span aria-hidden="true"> · </span>
@@ -471,6 +476,15 @@ function Results({
                     ? `${target.object_type_label}${target.object_type_code ? ` (${target.object_type_code})` : ''}`
                     : 'None or unconfirmed'}
                 </p>
+                {target.catalog === 'vlass' && (
+                  <p className="catalog-source-meta">
+                    Quality flag {target.quality_flag ?? '—'}
+                    <span aria-hidden="true"> · </span>
+                    Duplicate flag {target.duplicate_flag ?? '—'}
+                    <span aria-hidden="true"> · </span>
+                    {target.main_sample ? 'Main sample' : 'Outside main sample'}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -715,7 +729,7 @@ export default function App() {
     })
   }
 
-  const toggleImportedSource = (source: LofarSource) => {
+  const toggleImportedSource = (source: ExternalCatalogSource) => {
     const isSelected = selectedImportedTargetIds.has(source.id)
     if (
       !isSelected
@@ -724,7 +738,7 @@ export default function App() {
     invalidateResults()
     setImportedTargets((current) => {
       const next = new Map(current)
-      next.set(source.id, snapshotLofarSource(source))
+      next.set(source.id, snapshotCatalogSource(source))
       return next
     })
     setSelectedImportedTargetIds((current) => {
@@ -838,7 +852,7 @@ export default function App() {
   }
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    const tabs: AppTab[] = ['visibility', 'sites', 'lofar']
+    const tabs: AppTab[] = ['visibility', 'sites', 'catalog']
     const currentIndex = tabs.indexOf(activeTab)
     let nextIndex: number | null = null
     if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length
@@ -897,16 +911,17 @@ export default function App() {
           <span>{selectedLocationIds.size} / {MAXIMUM_SELECTED_SITES}</span>
         </button>
         <button
-          id="lofar-catalog-tab"
+          id="catalog-tab"
           type="button"
           role="tab"
-          aria-selected={activeTab === 'lofar'}
-          aria-controls="lofar-catalog-panel"
-          tabIndex={activeTab === 'lofar' ? 0 : -1}
+          aria-label="Catalog Search"
+          aria-selected={activeTab === 'catalog'}
+          aria-controls="catalog-panel"
+          tabIndex={activeTab === 'catalog' ? 0 : -1}
           onKeyDown={handleTabKeyDown}
-          onClick={() => activateTab('lofar')}
+          onClick={() => activateTab('catalog')}
         >
-          LOFAR DR3 Catalog
+          Catalog Search
           {selectedImportedTargetIds.size > 0 && <span>{selectedImportedTargetIds.size}</span>}
         </button>
       </nav>
@@ -1089,15 +1104,15 @@ export default function App() {
               </ul>
               <div className="imported-targets-heading">
                 <p>
-                  Targets Imported from LOFAR DR3
+                  Targets Imported from Catalogs
                   <strong>{selectedImportedTargetIds.size} Selected / {importedTargets.size} Imported</strong>
                 </p>
-                <button type="button" className="text-button" onClick={() => activateTab('lofar', true)}>
+                <button type="button" className="text-button" onClick={() => activateTab('catalog', true)}>
                   Search Catalog
                 </button>
               </div>
               {importedTargets.size > 0 ? (
-                <div className="imported-target-list" aria-label="Imported LOFAR DR3 target list">
+                <div className="imported-target-list" aria-label="Imported catalog target list">
                   {[...importedTargets.values()].map((target) => (
                     <article
                       key={target.id}
@@ -1118,15 +1133,24 @@ export default function App() {
                       </label>
                       <span>
                         <b>{target.name}</b>
-                        <small>{target.catalog_source_id} · {target.ra_deg.toFixed(4)}°, {target.dec_deg.toFixed(4)}°</small>
                         <small>
-                          LoTSS morphology {target.morphology_code
+                          {target.catalog === 'lofar_dr3' ? 'LoTSS' : 'VLASS'} · {target.catalog_source_id}
+                          {' · '}{target.ra_deg.toFixed(4)}°, {target.dec_deg.toFixed(4)}°
+                        </small>
+                        <small>
+                          {target.catalog === 'lofar_dr3' ? 'LoTSS morphology' : 'VLASS component type'} {target.morphology_code
                             ? `${target.morphology_code} — ${target.morphology_label ?? 'No description'}`
                             : 'Unclassified'}
                           {' · '}SIMBAD type {target.object_type_label
                             ? `${target.object_type_label}${target.object_type_code ? ` (${target.object_type_code})` : ''}`
                             : 'None or unconfirmed'}
                         </small>
+                        {target.catalog === 'vlass' && (
+                          <small>
+                            Quality {target.quality_flag ?? '—'} · Duplicate {target.duplicate_flag ?? '—'} ·{' '}
+                            {target.main_sample ? 'Main sample' : 'Outside main sample'}
+                          </small>
+                        )}
                       </span>
                       <button
                         type="button"
@@ -1139,7 +1163,7 @@ export default function App() {
                   ))}
                 </div>
               ) : (
-                <p className="imported-target-empty">Search the LOFAR DR3 tab to add targets to the calculation.</p>
+                <p className="imported-target-empty">Search the Catalog tab to add targets to the calculation.</p>
               )}
               {selectionError && (
                 <p className="field-error" role="alert">Select at least one target to calculate.</p>
@@ -1188,8 +1212,8 @@ export default function App() {
         onGoToVisibility={() => activateTab('visibility', true)}
       />
 
-      <LofarCatalogPanel
-        hidden={activeTab !== 'lofar'}
+      <CatalogPanel
+        hidden={activeTab !== 'catalog'}
         selectedSourceIds={selectedImportedTargetIds}
         selectedTargetCount={selectedTargetIds.size + selectedImportedTargetIds.size}
         maximumTargetCount={MAXIMUM_TARGET_COUNT}

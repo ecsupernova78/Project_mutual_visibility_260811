@@ -6,11 +6,10 @@ export interface ObserverLocation {
   elevation_m: number
 }
 
-export type CatalogName = 'lofar_dr3'
+export type CatalogName = 'lofar_dr3' | 'vlass'
 
-export interface LofarSource {
+interface CatalogSourceBase {
   id: string
-  catalog: CatalogName
   source_id: string
   name: string
   ra_deg: number
@@ -20,9 +19,6 @@ export interface LofarSource {
   total_flux_mjy: number | null
   peak_flux_mjy: number | null
   aliases: string[]
-  morphology_code: 'S' | 'M' | 'C' | null
-  morphology_label: string | null
-  morphology_description: string | null
   counterpart_name: string | null
   counterpart_aliases: string[]
   object_type_code: string | null
@@ -33,6 +29,28 @@ export interface LofarSource {
   crossmatch_catalog: 'SIMBAD' | null
   separation_arcmin: number | null
 }
+
+export interface LofarSource extends CatalogSourceBase {
+  catalog: 'lofar_dr3'
+  morphology_code: 'S' | 'M' | 'C' | null
+  morphology_label: string | null
+  morphology_description: string | null
+}
+
+export type VlassComponentCode = 'S' | 'C' | 'M' | 'E'
+export type VlassQualityFlag = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
+
+export interface VlassSource extends CatalogSourceBase {
+  catalog: 'vlass'
+  morphology_code: VlassComponentCode | null
+  morphology_label: string | null
+  morphology_description: string | null
+  duplicate_flag: 0 | 1 | 2
+  quality_flag: VlassQualityFlag
+  main_sample: boolean
+}
+
+export type ExternalCatalogSource = LofarSource | VlassSource
 
 export type LofarSortField = 'total_flux' | 'peak_flux'
 export type LofarConeSortField = 'distance' | LofarSortField
@@ -75,7 +93,7 @@ export interface LofarConeSearchParams {
 }
 
 export interface LofarSearchResponse {
-  catalog: CatalogName
+  catalog: 'lofar_dr3'
   catalog_release: string
   coordinate_frame: 'icrs'
   reference_frequency_mhz: number
@@ -98,6 +116,60 @@ export interface LofarSearchResponse {
   sources: LofarSource[]
 }
 
+export type VlassSortField = 'total_flux' | 'peak_flux'
+export type VlassConeSortField = 'distance' | VlassSortField
+
+export interface VlassMorphologyDefinition {
+  code: VlassComponentCode
+  label: string
+  description: string
+}
+
+export interface VlassSearchParams {
+  source_prefix?: string
+  sort_by: VlassSortField
+  sort_direction: SortDirection
+  limit: number
+  morphology_codes: VlassComponentCode[]
+  simbad_type_categories?: SimbadTypeCategory[]
+  recommended_only: boolean
+}
+
+export interface VlassConeSearchParams {
+  ra_deg: number
+  dec_deg: number
+  radius_arcmin: number
+  sort_by: VlassConeSortField
+  sort_direction: SortDirection
+  limit: number
+  recommended_only: boolean
+}
+
+export interface VlassSearchResponse {
+  catalog: 'vlass'
+  catalog_release: string
+  coordinate_frame: 'icrs'
+  reference_frequency_mhz: number
+  tap_mode: 'async'
+  search_mode: 'brightness' | 'cone'
+  enrichment_status: 'complete' | 'partial' | 'unavailable'
+  enrichment_warning: string | null
+  morphology_codebook: VlassMorphologyDefinition[]
+  recommended_only: boolean
+  sort_by: VlassConeSortField
+  sort_direction: SortDirection
+  limit: number
+  source_prefix: string | null
+  morphology_codes?: VlassComponentCode[] | null
+  simbad_type_categories?: SimbadTypeCategory[] | null
+  candidate_count?: number
+  center_ra_deg: number | null
+  center_dec_deg: number | null
+  radius_arcmin: number | null
+  result_count: number
+  sources: VlassSource[]
+}
+
 export interface CustomTargetSnapshot {
   id: string
   name: string
@@ -108,9 +180,12 @@ export interface CustomTargetSnapshot {
   catalog_source_id: string
   total_flux_mjy?: number
   peak_flux_mjy?: number
-  morphology_code?: 'S' | 'M' | 'C'
+  morphology_code?: VlassComponentCode
   morphology_label?: string
   morphology_description?: string
+  duplicate_flag?: 0 | 1 | 2
+  quality_flag?: VlassQualityFlag
+  main_sample?: boolean
   counterpart_name?: string
   counterpart_aliases?: string[]
   object_type_code?: string
@@ -162,9 +237,12 @@ export interface VisibilityTarget {
   catalog_source_id?: string | null
   total_flux_mjy?: number | null
   peak_flux_mjy?: number | null
-  morphology_code?: 'S' | 'M' | 'C' | null
+  morphology_code?: VlassComponentCode | null
   morphology_label?: string | null
   morphology_description?: string | null
+  duplicate_flag?: 0 | 1 | 2 | null
+  quality_flag?: VlassQualityFlag | null
+  main_sample?: boolean | null
   counterpart_name?: string | null
   counterpart_aliases?: string[]
   object_type_code?: string | null

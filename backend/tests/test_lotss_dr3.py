@@ -957,7 +957,7 @@ def test_catalog_endpoint_maps_upstream_failures(client: TestClient, monkeypatch
     busy_response = client.get("/api/v1/catalogs/lotss-dr3/sources")
     assert busy_response.status_code == 429
     assert busy_response.headers["Retry-After"] == "5"
-    assert "잠시 후" in busy_response.json()["detail"]
+    assert "try again shortly" in busy_response.json()["detail"].lower()
 
     async def raise_timeout(search: object) -> None:
         raise LofarCatalogTimeout

@@ -447,6 +447,12 @@ describe('LofarCatalogPanel', () => {
       && element.textContent?.includes("DISTANCE(POINT('ICRS', RA, DEC)") === true
       && element.textContent.includes("CIRCLE('ICRS', 69.26825, 29.67052, 5/60.0)")
     ))).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Sort field'), 'peak_flux')
+    expect(screen.getByText((_, element) => (
+      element?.tagName === 'CODE'
+      && element.textContent?.includes('AND Peak_flux IS NOT NULL') === true
+    ))).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Sort field'), 'distance')
     await user.click(screen.getByRole('button', { name: 'Search around coordinates' }))
 
     expect(await screen.findByText('3C 123', { selector: 'strong' })).toBeInTheDocument()

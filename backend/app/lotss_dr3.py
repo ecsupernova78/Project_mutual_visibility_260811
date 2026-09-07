@@ -693,7 +693,7 @@ async def _enrich_sources(
             matches = await _xmatch_counterparts(sources, client)
     except (TimeoutError, LofarEnrichmentError) as error:
         logger.warning("SIMBAD positional enrichment unavailable: %s", error)
-        return sources, "unavailable", "SIMBAD 위치 후보 정보를 일시적으로 불러오지 못했습니다."
+        return sources, "unavailable", "SIMBAD positional counterpart information is temporarily unavailable."
 
     base_enriched = _apply_counterparts(sources, matches)
     try:
@@ -701,7 +701,7 @@ async def _enrich_sources(
             aliases, descriptions = await _counterpart_details(matches, client)
     except (TimeoutError, LofarEnrichmentError) as error:
         logger.warning("SIMBAD alias/type enrichment partially unavailable: %s", error)
-        return base_enriched, "partial", "SIMBAD 별칭 또는 유형 설명 일부를 불러오지 못했습니다."
+        return base_enriched, "partial", "Some SIMBAD aliases or object-type descriptions could not be loaded."
     return _apply_counterparts(sources, matches, aliases, descriptions), "complete", None
 
 
@@ -900,7 +900,7 @@ async def _search_with_client(
             "result_count": len(sources),
             "sources": sources,
             "enrichment_status": "unavailable",
-            "enrichment_warning": "SIMBAD 보강을 아직 수행하지 않았습니다.",
+            "enrichment_warning": "SIMBAD enrichment has not been performed yet.",
             "morphology_codebook": MORPHOLOGY_CODEBOOK,
         }
         if search.mode == "cone":

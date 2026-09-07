@@ -29,8 +29,23 @@ from app.models import (
     TargetCatalogResponse,
     VisibilityRequest,
     VisibilityResponse,
+    VlassConeSearchParameters,
+    VlassConeSearchResponse,
+    VlassSearchParameters,
+    VlassSearchResponse,
 )
 from app.visibility import calculate_visibility
+from app.vlass import (
+    VlassCatalogBusy,
+    VlassCatalogError,
+    VlassCatalogTimeout,
+    VlassSearch,
+    VlassSimbadFilterUnavailable,
+    vlass_catalog_query_coordinator,
+)
+from app.vlass import (
+    filter_simbad_type_categories as filter_vlass_simbad_type_categories,
+)
 
 
 def _cors_origins() -> list[str]:
@@ -106,13 +121,13 @@ async def search_lotss_dr3_sources(
     except LofarCatalogBusy as error:
         raise HTTPException(
             status_code=429,
-            detail="LOFAR DR3 검색 요청이 많습니다. 잠시 후 다시 시도해 주세요.",
+            detail="Too many LOFAR DR3 catalog searches are already running. Please try again shortly.",
             headers={"Retry-After": "5"},
         ) from error
     except LofarCatalogTimeout as error:
         raise HTTPException(
             status_code=504,
-            detail="LOFAR DR3 카탈로그가 제한 시간 안에 응답하지 않았습니다.",
+            detail="The LOFAR DR3 catalog did not respond before the request timeout.",
         ) from error
     except LofarSimbadFilterUnavailable as error:
         raise HTTPException(
@@ -125,7 +140,7 @@ async def search_lotss_dr3_sources(
     except LofarCatalogError as error:
         raise HTTPException(
             status_code=502,
-            detail="LOFAR DR3 카탈로그를 일시적으로 이용할 수 없거나 응답 형식이 올바르지 않습니다.",
+            detail="The LOFAR DR3 catalog is temporarily unavailable or returned an invalid response.",
         ) from error
 
 
@@ -160,18 +175,117 @@ async def cone_search_lotss_dr3_sources(
     except LofarCatalogBusy as error:
         raise HTTPException(
             status_code=429,
-            detail="LOFAR DR3 검색 요청이 많습니다. 잠시 후 다시 시도해 주세요.",
+            detail="Too many LOFAR DR3 catalog searches are already running. Please try again shortly.",
             headers={"Retry-After": "5"},
         ) from error
     except LofarCatalogTimeout as error:
         raise HTTPException(
             status_code=504,
-            detail="LOFAR DR3 카탈로그가 제한 시간 안에 응답하지 않았습니다.",
+            detail="The LOFAR DR3 catalog did not respond before the request timeout.",
         ) from error
     except LofarCatalogError as error:
         raise HTTPException(
             status_code=502,
-            detail="LOFAR DR3 카탈로그를 일시적으로 이용할 수 없거나 응답 형식이 올바르지 않습니다.",
+            detail="The LOFAR DR3 catalog is temporarily unavailable or returned an invalid response.",
+        ) from error
+
+
+@app.get(
+    "/api/v1/catalogs/vlass/sources",
+    response_model=VlassSearchResponse,
+    tags=["catalog"],
+)
+async def search_vlass_sources(
+    params: Annotated[VlassSearchParameters, Query()],
+) -> VlassSearchResponse:
+    """Browse the published VLASS Epoch 1 Quick Look component table through VizieR TAP."""
+
+    try:
+        response = await vlass_catalog_query_coordinator.search(
+            VlassSearch(
+                source_prefix=params.source_prefix,
+                sort_by=params.sort_by,
+                sort_direction=params.sort_direction,
+                limit=params.limit,
+                morphology_codes=frozenset(params.morphology_codes),
+                recommended_only=params.recommended_only,
+            )
+        )
+        if not isinstance(response, VlassSearchResponse):
+            raise VlassCatalogError("catalog coordinator returned the wrong response type")
+        return filter_vlass_simbad_type_categories(response, params.simbad_type_categories)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except VlassCatalogBusy as error:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many VLASS catalog searches are already running. Please try again shortly.",
+            headers={"Retry-After": "5"},
+        ) from error
+    except VlassCatalogTimeout as error:
+        raise HTTPException(
+            status_code=504,
+            detail="The VLASS catalog did not respond before the request timeout.",
+        ) from error
+    except VlassSimbadFilterUnavailable as error:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "SIMBAD physical-type filtering is temporarily unavailable. "
+                "Try again later or select All physical types."
+            ),
+        ) from error
+    except VlassCatalogError as error:
+        raise HTTPException(
+            status_code=502,
+            detail="The VLASS catalog is temporarily unavailable or returned an invalid response.",
+        ) from error
+
+
+@app.get(
+    "/api/v1/catalogs/vlass/cone",
+    response_model=VlassConeSearchResponse,
+    tags=["catalog"],
+)
+async def cone_search_vlass_sources(
+    params: Annotated[VlassConeSearchParameters, Query()],
+) -> VlassConeSearchResponse:
+    """Find published VLASS Epoch 1 Quick Look components inside a validated ICRS cone."""
+
+    try:
+        response = await vlass_catalog_query_coordinator.search(
+            VlassSearch(
+                source_prefix=None,
+                sort_by=params.sort_by,
+                sort_direction=params.sort_direction,
+                limit=params.limit,
+                mode="cone",
+                ra_deg=params.ra_deg,
+                dec_deg=params.dec_deg,
+                radius_arcmin=params.radius_arcmin,
+                recommended_only=params.recommended_only,
+            )
+        )
+        if not isinstance(response, VlassConeSearchResponse):
+            raise VlassCatalogError("catalog coordinator returned the wrong response type")
+        return response
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except VlassCatalogBusy as error:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many VLASS catalog searches are already running. Please try again shortly.",
+            headers={"Retry-After": "5"},
+        ) from error
+    except VlassCatalogTimeout as error:
+        raise HTTPException(
+            status_code=504,
+            detail="The VLASS catalog did not respond before the request timeout.",
+        ) from error
+    except VlassCatalogError as error:
+        raise HTTPException(
+            status_code=502,
+            detail="The VLASS catalog is temporarily unavailable or returned an invalid response.",
         ) from error
 
 

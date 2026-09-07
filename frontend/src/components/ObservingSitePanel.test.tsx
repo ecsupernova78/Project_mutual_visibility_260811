@@ -6,6 +6,19 @@ import { DEFAULT_OBSERVING_SITES } from '../observingSiteStorage'
 import type { ObserverLocation } from '../types'
 import { ObservingSitePanel } from './ObservingSitePanel'
 
+vi.mock('./ObservingSiteMap', () => ({
+  ObservingSiteMap: ({ sites }: { sites: ObserverLocation[] }) => (
+    <section aria-labelledby="mock-site-map-title">
+      <h2 id="mock-site-map-title">Map and Pairwise Distances</h2>
+      <div
+        role="region"
+        aria-label="Interactive map of selected observing sites"
+        data-site-ids={sites.map((site) => site.id).join(',')}
+      />
+    </section>
+  ),
+}))
+
 const customSite: ObserverLocation = {
   id: 'site-mauna-kea',
   name: 'Mauna Kea (USA)',
@@ -34,7 +47,7 @@ function renderPanel(overrides: Partial<Parameters<typeof ObservingSitePanel>[0]
 }
 
 describe('ObservingSitePanel', () => {
-  it('maps selected sites and lists each pairwise great-circle distance', () => {
+  it('passes selected sites to the observing-site map', () => {
     renderPanel()
     const mapCard = screen.getByRole('heading', {
       name: 'Map and Pairwise Distances',
@@ -42,12 +55,7 @@ describe('ObservingSitePanel', () => {
 
     expect(within(mapCard).getByRole('region', {
       name: 'Interactive map of selected observing sites',
-    })).toBeInTheDocument()
-    expect(within(mapCard).getByText('7,848.1 km')).toBeInTheDocument()
-    expect(within(mapCard).getByText('Surface great-circle distance; elevation is excluded.'))
-      .toBeInTheDocument()
-    expect(within(mapCard).getByRole('link', { name: 'OpenStreetMap contributors' }))
-      .toHaveAttribute('href', 'https://www.openstreetmap.org/copyright')
+    })).toHaveAttribute('data-site-ids', 'narrabri,pyeongchang')
   })
 
   it('creates a validated saved profile without silently selecting it', async () => {

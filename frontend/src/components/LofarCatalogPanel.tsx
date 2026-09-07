@@ -125,12 +125,16 @@ function buildConeAdqlPreview(
     ? 'Separation_deg'
     : sortBy === 'total_flux' ? 'Total_flux' : 'Peak_flux'
   const direction = sortDirection === 'desc' ? 'DESC' : 'ASC'
+  const predicates = [
+    `1=CONTAINS(POINT('ICRS', RA, DEC), CIRCLE('ICRS', ${safeRa}, ${safeDec}, ${safeRadius}/60.0))`,
+  ]
+  if (sortBy !== 'distance') predicates.push(`${sortColumn} IS NOT NULL`)
   return [
     `SELECT TOP ${limit}`,
     '  Source_Name, RA, DEC, Total_flux, Peak_flux, S_Code,',
     `  DISTANCE(POINT('ICRS', RA, DEC), POINT('ICRS', ${safeRa}, ${safeDec})) AS Separation_deg`,
     'FROM lotss_dr3.main_sources',
-    `WHERE 1=CONTAINS(POINT('ICRS', RA, DEC), CIRCLE('ICRS', ${safeRa}, ${safeDec}, ${safeRadius}/60.0))`,
+    `WHERE ${predicates.join('\n  AND ')}`,
     `ORDER BY ${sortColumn} ${direction}, Source_Name ASC`,
   ].join('\n')
 }
@@ -141,7 +145,7 @@ interface LofarCatalogPanelProps {
   selectedTargetCount: number
   maximumTargetCount: number
   onToggleSource: (source: LofarSource) => void
-  onGoToVisibility: () => void
+  onGoToVisibility?: () => void
 }
 
 function formatFlux(value: number | null) {
@@ -161,7 +165,6 @@ export function LofarCatalogPanel({
   selectedTargetCount,
   maximumTargetCount,
   onToggleSource,
-  onGoToVisibility,
 }: LofarCatalogPanelProps) {
   const [mode, setMode] = useState<SearchMode>('brightness')
   const [sourcePrefix, setSourcePrefix] = useState('')
@@ -351,17 +354,17 @@ export function LofarCatalogPanel({
   const submitLabel = mode === 'brightness' ? 'Load LOFAR DR3 sources' : 'Search around coordinates'
 
   return (
-    <main
-      id="lofar-catalog-panel"
-      className="catalog-workspace"
+    <section
+      id="lofar-provider-panel"
+      className="catalog-provider-panel"
       role="tabpanel"
-      aria-labelledby="lofar-catalog-tab"
+      aria-labelledby="lofar-provider-tab"
       hidden={hidden}
     >
-      <header className="catalog-hero">
+      <header className="catalog-provider-intro">
         <div>
           <p className="eyebrow">LOFAR TWO-METRE SKY SURVEY · DATA RELEASE 3</p>
-          <h1>LOFAR DR3 Catalog</h1>
+          <h2>LOFAR DR3</h2>
           <p>
             Browse 144 MHz radio sources by flux density or search around a sky position, then add sources to the
             altitude–time calculation. Familiar names and physical classifications are shown when a positional SIMBAD
@@ -377,11 +380,6 @@ export function LofarCatalogPanel({
             <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>
           </p>
         </div>
-        <div className="catalog-selection-summary" aria-live="polite">
-          <span>Selected targets</span>
-          <strong>{selectedTargetCount} / {maximumTargetCount}</strong>
-          <button type="button" onClick={onGoToVisibility}>Go to Observation Setup</button>
-        </div>
       </header>
 
       <section className="catalog-search-card" aria-labelledby="lofar-search-title">
@@ -391,7 +389,7 @@ export function LofarCatalogPanel({
             <label className={mode === 'brightness' ? 'is-active' : ''}>
               <input
                 type="radio"
-                name="catalog-search-mode"
+                name="lofar-search-mode"
                 value="brightness"
                 checked={mode === 'brightness'}
                 onChange={() => setMode('brightness')}
@@ -401,7 +399,7 @@ export function LofarCatalogPanel({
             <label className={mode === 'cone' ? 'is-active' : ''}>
               <input
                 type="radio"
-                name="catalog-search-mode"
+                name="lofar-search-mode"
                 value="cone"
                 checked={mode === 'cone'}
                 onChange={() => setMode('cone')}
@@ -657,7 +655,7 @@ export function LofarCatalogPanel({
           : null}
         onChangePage={(page) => patchModeState(mode, { currentPage: page })}
       />
-    </main>
+    </section>
   )
 }
 
@@ -741,7 +739,7 @@ function CatalogResults({
         </div>
       )}
       {status === 'success' && response && sources.length === 0 && (
-        <div className="catalog-message">
+        <div className="catalog-message" role="status">
           <strong>No matching sources found.</strong>
           <span>{isCone
             ? 'Increase the search radius or check the center coordinates.'

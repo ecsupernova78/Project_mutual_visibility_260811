@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: mutual-visibility-api-260811
+    runtime: python
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    buildCommand: uv sync --locked --no-dev
+    startCommand: uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.3
+      - key: CORS_ORIGINS
+        value: https://mutual-visibility.kcic-researchers.chatgpt.site
+      - key: CATALOG_REQUEST_TIMEOUT_SECONDS
+        value: 20
+      - key: CATALOG_JOB_TIMEOUT_SECONDS
+        value: 90
+      - key: CATALOG_ENRICHMENT_TIMEOUT_SECONDS
+        value: 30
+      - key: CATALOG_CACHE_TTL_SECONDS
+        value: 300
+      - key: CATALOG_MAX_CONCURRENT_JOBS
+        value: 2

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -7,6 +7,12 @@ import {
   DEFAULT_OBSERVING_SITES,
   OBSERVING_SITE_STORAGE_KEY,
 } from './observingSiteStorage'
+
+vi.mock('./components/ObservingSiteMap', () => ({
+  ObservingSiteMap: () => (
+    <div role="region" aria-label="Interactive map of selected observing sites" />
+  ),
+}))
 
 const responseBody = {
   times_utc: [
@@ -189,8 +195,11 @@ describe('상호 가시성 인터페이스', () => {
     expect(screen.getByDisplayValue('Mauna Kea VLBI (USA)')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
-    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as {
+    const visibilityCalls = () => fetchMock.mock.calls.filter(
+      ([input]) => String(input) === '/api/v1/visibility/altitude-series',
+    )
+    await waitFor(() => expect(visibilityCalls()).toHaveLength(1))
+    const payload = JSON.parse(String(visibilityCalls()[0][1]?.body)) as {
       locations: Array<Record<string, unknown>>
     }
     expect(payload.locations).toContainEqual(expect.objectContaining({
@@ -261,8 +270,11 @@ describe('상호 가시성 인터페이스', () => {
     })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    const secondPayload = JSON.parse(String(fetchMock.mock.calls[1][1]?.body)) as {
+    const visibilityCalls = () => fetchMock.mock.calls.filter(
+      ([input]) => String(input) === '/api/v1/visibility/altitude-series',
+    )
+    await waitFor(() => expect(visibilityCalls()).toHaveLength(2))
+    const secondPayload = JSON.parse(String(visibilityCalls()[1][1]?.body)) as {
       locations: Array<{ id: string }>
     }
     expect(secondPayload.locations.map((location) => location.id)).toEqual([
@@ -403,7 +415,7 @@ describe('상호 가시성 인터페이스', () => {
     render(<App />)
 
     const visibilityTab = screen.getByRole('tab', { name: 'Observation Visibility' })
-    const catalogTab = screen.getByRole('tab', { name: 'LOFAR DR3 Catalog' })
+    const catalogTab = screen.getByRole('tab', { name: 'Catalog Search' })
     expect(visibilityTab).toHaveAttribute('aria-selected', 'true')
     await user.click(catalogTab)
     expect(catalogTab).toHaveAttribute('aria-selected', 'true')
@@ -425,8 +437,8 @@ describe('상호 가시성 인터페이스', () => {
     await user.click(sourceCheckbox)
     expect(sourceCheckbox).toBeChecked()
     await user.click(screen.getByRole('button', { name: 'Go to Observation Setup' }))
-    expect(screen.getByText('Targets Imported from LOFAR DR3')).toBeInTheDocument()
-    const importedList = screen.getByLabelText('Imported LOFAR DR3 target list')
+    expect(screen.getByText('Targets Imported from Catalogs')).toBeInTheDocument()
+    const importedList = screen.getByLabelText('Imported catalog target list')
     expect(within(importedList).getByText(source.name, { selector: 'b' })).toBeInTheDocument()
     expect(importedList).not.toHaveTextContent(/[가-힣]/)
 
@@ -458,9 +470,117 @@ describe('상호 가시성 인터페이스', () => {
       crossmatch_catalog: source.crossmatch_catalog,
     }])
 
-    await user.click(screen.getByRole('tab', { name: /LOFAR DR3 Catalog/ }))
+    await user.click(screen.getByRole('tab', { name: 'Catalog Search' }))
     expect(screen.getByLabelText('Source ID prefix (optional)')).toHaveValue('ILTJ1234')
     expect(screen.getByRole('checkbox', { name: `${source.name}: remove from visibility targets` })).toBeChecked()
+  })
+
+  it('VLASS source를 선택해 catalog metadata snapshot을 가시성 요청으로 전달한다', async () => {
+    const user = userEvent.setup()
+    const source = {
+      id: 'vlass-abc123',
+      catalog: 'vlass',
+      source_id: 'VLASS1QLCIR J122906.70+020308.6',
+      name: '3C 273',
+      ra_deg: 187.27792,
+      dec_deg: 2.05239,
+      ra_hms: '12:29:06.70',
+      dec_dms: '+02:03:08.6',
+      total_flux_mjy: 52310.5,
+      peak_flux_mjy: 48200.25,
+      aliases: ['QSO B1226+023'],
+      morphology_code: 'S',
+      morphology_label: 'Single-Gaussian fit',
+      morphology_description: 'One Gaussian fitted in its island',
+      duplicate_flag: 0,
+      quality_flag: 0,
+      main_sample: true,
+      separation_arcmin: null,
+      counterpart_name: '3C 273',
+      counterpart_aliases: ['QSO B1226+023'],
+      object_type_code: 'QSO',
+      object_type_label: 'Quasar',
+      object_type_description: 'Quasar',
+      crossmatch_separation_arcsec: 0.42,
+      crossmatch_confidence: 'high',
+      crossmatch_catalog: 'SIMBAD',
+    } as const
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input).startsWith('/api/v1/catalogs/vlass/sources')) {
+        return new Response(JSON.stringify({
+          catalog: 'vlass',
+          catalog_release: 'VLASS Epoch 1 Quick Look (Gordon et al. 2021)',
+          coordinate_frame: 'icrs',
+          reference_frequency_mhz: 3000,
+          tap_mode: 'async',
+          search_mode: 'brightness',
+          enrichment_status: 'complete',
+          enrichment_warning: null,
+          morphology_codebook: [],
+          recommended_only: true,
+          sort_by: 'total_flux',
+          sort_direction: 'desc',
+          limit: 100,
+          source_prefix: null,
+          morphology_codes: ['S', 'C', 'M', 'E'],
+          simbad_type_categories: [],
+          candidate_count: 1,
+          center_ra_deg: null,
+          center_dec_deg: null,
+          radius_arcmin: null,
+          result_count: 1,
+          sources: [source],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      expect(init?.method).toBe('POST')
+      return new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
+    render(<App />)
+
+    await user.click(screen.getByRole('tab', { name: 'Catalog Search' }))
+    await user.click(screen.getByRole('tab', { name: /VLASS/ }))
+    await user.click(screen.getByRole('button', { name: 'Load VLASS sources' }))
+    await user.click(await screen.findByRole('checkbox', { name: '3C 273: add to visibility targets' }))
+    await user.click(screen.getByRole('button', { name: 'Go to Observation Setup' }))
+
+    const importedList = screen.getByLabelText('Imported catalog target list')
+    expect(within(importedList).getByText('3C 273', { selector: 'b' })).toBeInTheDocument()
+    expect(within(importedList).getByText(/VLASS · VLASS1QLCIR J122906/)).toBeInTheDocument()
+    expect(within(importedList).getByText(/Quality 0 · Duplicate 0 · Main sample/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const payload = JSON.parse(String(fetchMock.mock.calls[1][1]?.body)) as {
+      custom_targets: Array<Record<string, unknown>>
+    }
+    expect(payload.custom_targets).toEqual([{
+      id: source.id,
+      name: source.name,
+      aliases: ['QSO B1226+023', source.source_id],
+      ra_deg: source.ra_deg,
+      dec_deg: source.dec_deg,
+      catalog: 'vlass',
+      catalog_source_id: source.source_id,
+      total_flux_mjy: source.total_flux_mjy,
+      peak_flux_mjy: source.peak_flux_mjy,
+      morphology_code: source.morphology_code,
+      morphology_label: source.morphology_label,
+      morphology_description: source.morphology_description,
+      duplicate_flag: source.duplicate_flag,
+      quality_flag: source.quality_flag,
+      main_sample: source.main_sample,
+      counterpart_name: source.counterpart_name,
+      counterpart_aliases: source.counterpart_aliases,
+      object_type_code: source.object_type_code,
+      object_type_label: source.object_type_label,
+      object_type_description: source.object_type_description,
+      crossmatch_separation_arcsec: source.crossmatch_separation_arcsec,
+      crossmatch_confidence: source.crossmatch_confidence,
+      crossmatch_catalog: source.crossmatch_catalog,
+    }])
   })
 
   it('메인에서 LOFAR 천체를 해제해도 목록을 보존하고 계산 payload에만 선택 상태를 반영한다', async () => {
@@ -508,12 +628,12 @@ describe('상호 가시성 인터페이스', () => {
     })
     render(<App />)
 
-    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 Catalog' }))
+    await user.click(screen.getByRole('tab', { name: 'Catalog Search' }))
     await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
     await user.click(await screen.findByRole('checkbox', { name: '3C123: add to visibility targets' }))
     await user.click(screen.getByRole('button', { name: 'Go to Observation Setup' }))
 
-    const importedList = screen.getByLabelText('Imported LOFAR DR3 target list')
+    const importedList = screen.getByLabelText('Imported catalog target list')
     const importedCheckbox = within(importedList).getByRole('checkbox', {
       name: 'Exclude 3C123 from the calculation',
     })
@@ -536,7 +656,7 @@ describe('상호 가시성 인터페이스', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body)).custom_targets).toHaveLength(1)
 
     await user.click(within(importedList).getByRole('button', { name: 'Remove 3C123 from the imported list' }))
-    expect(screen.queryByLabelText('Imported LOFAR DR3 target list')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Imported catalog target list')).not.toBeInTheDocument()
   })
 
   it('Source ID prefix를 비워 두면 전체 카탈로그 TOP 목록을 요청한다', async () => {
@@ -556,7 +676,7 @@ describe('상호 가시성 인터페이스', () => {
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     render(<App />)
 
-    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 Catalog' }))
+    await user.click(screen.getByRole('tab', { name: 'Catalog Search' }))
     await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
 
     expect(await screen.findByText('No matching sources found.')).toBeInTheDocument()
@@ -595,12 +715,12 @@ describe('상호 가시성 인터페이스', () => {
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Deselect All' }))
-    await user.click(screen.getByRole('tab', { name: 'LOFAR DR3 Catalog' }))
+    await user.click(screen.getByRole('tab', { name: 'Catalog Search' }))
     await user.type(screen.getByLabelText('Source ID prefix (optional)'), 'ILTJ1234')
     await user.click(screen.getByRole('button', { name: 'Load LOFAR DR3 sources' }))
     const sourceChecks = await screen.findAllByRole('checkbox', { name: /add to visibility targets/ })
     expect(sourceChecks).toHaveLength(25)
-    for (const checkbox of sourceChecks) await user.click(checkbox)
+    for (const checkbox of sourceChecks) fireEvent.click(checkbox)
     expect(screen.getByText('25 / 25')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Go to Observation Setup' }))

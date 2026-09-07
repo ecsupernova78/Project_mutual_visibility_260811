@@ -49,6 +49,9 @@ class _CalculationTarget:
     crossmatch_separation_arcsec: float | None = None
     crossmatch_confidence: str | None = None
     crossmatch_catalog: str | None = None
+    duplicate_flag: int | None = None
+    quality_flag: int | None = None
+    main_sample: bool | None = None
 
 
 def _calculation_targets(request: VisibilityRequest) -> list[_CalculationTarget]:
@@ -83,6 +86,9 @@ def _calculation_targets(request: VisibilityRequest) -> list[_CalculationTarget]
             crossmatch_separation_arcsec=target.crossmatch_separation_arcsec,
             crossmatch_confidence=target.crossmatch_confidence,
             crossmatch_catalog=target.crossmatch_catalog,
+            duplicate_flag=target.duplicate_flag,
+            quality_flag=target.quality_flag,
+            main_sample=target.main_sample,
         )
         for target in request.custom_targets
     )
@@ -194,6 +200,9 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                 crossmatch_separation_arcsec=target.crossmatch_separation_arcsec,
                 crossmatch_confidence=target.crossmatch_confidence,
                 crossmatch_catalog=target.crossmatch_catalog,
+                duplicate_flag=target.duplicate_flag,
+                quality_flag=target.quality_flag,
+                main_sample=target.main_sample,
             )
         )
 
