@@ -10,12 +10,19 @@ import type {
 } from './types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '') ?? ''
+const HEALTH_ENDPOINT = `${API_BASE_URL}/health`
 const ENDPOINT = `${API_BASE_URL}/api/v1/visibility/altitude-series`
 const LOFAR_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/lotss-dr3/sources`
 const LOFAR_CONE_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/lotss-dr3/cone`
 const VLASS_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/vlass/sources`
 const VLASS_CONE_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/vlass/cone`
 const HANGUL_PATTERN = new RegExp('[\\u3131-\\u318e\\uac00-\\ud7a3]')
+const API_READY_TTL_MS = 10 * 60 * 1000
+const API_WAKE_RETRY_DELAY_MS = 4_000
+const API_WAKE_ATTEMPTS = 24
+
+let apiReadyUntil = 0
+let apiWakePromise: Promise<void> | null = null
 
 function englishErrorDetail(detail: unknown) {
   return typeof detail === 'string' && !HANGUL_PATTERN.test(detail) ? detail : ''
@@ -31,6 +38,83 @@ export class ApiError extends Error {
   }
 }
 
+function abortError() {
+  return new DOMException('The operation was aborted.', 'AbortError')
+}
+
+function waitForRetry(delayMs: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError())
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      signal?.removeEventListener('abort', handleAbort)
+      resolve()
+    }, delayMs)
+    const handleAbort = () => {
+      window.clearTimeout(timeout)
+      reject(abortError())
+    }
+    signal?.addEventListener('abort', handleAbort, { once: true })
+  })
+}
+
+async function probeApiUntilReady() {
+  let lastError: unknown
+
+  for (let attempt = 0; attempt < API_WAKE_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(HEALTH_ENDPOINT, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      })
+      if (response.ok) {
+        const body = (await response.json()) as { status?: unknown }
+        if (body.status === 'ok') {
+          apiReadyUntil = Date.now() + API_READY_TTL_MS
+          return
+        }
+      }
+      lastError = new Error(`Health check returned HTTP ${response.status}.`)
+    } catch (error) {
+      lastError = error
+    }
+
+    if (attempt < API_WAKE_ATTEMPTS - 1) {
+      await waitForRetry(API_WAKE_RETRY_DELAY_MS)
+    }
+  }
+
+  throw new ApiError(
+    'The free calculation server is still starting. Please wait a moment and try again.',
+    lastError instanceof ApiError ? lastError.status : undefined,
+  )
+}
+
+async function waitForApiReady(signal?: AbortSignal) {
+  // Local development uses Vite's same-origin proxy and does not need a wake-up probe.
+  if (!API_BASE_URL || Date.now() < apiReadyUntil) return
+  if (signal?.aborted) throw abortError()
+
+  apiWakePromise ??= probeApiUntilReady().finally(() => {
+    apiWakePromise = null
+  })
+
+  if (!signal) {
+    await apiWakePromise
+    return
+  }
+
+  await Promise.race([
+    apiWakePromise,
+    new Promise<never>((_, reject) => {
+      signal.addEventListener('abort', () => reject(abortError()), { once: true })
+    }),
+  ])
+}
+
 export async function calculateVisibility(
   payload: VisibilityRequest,
   signal?: AbortSignal,
@@ -38,6 +122,7 @@ export async function calculateVisibility(
   let response: Response
 
   try {
+    await waitForApiReady(signal)
     response = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -91,6 +176,7 @@ export async function searchLofarSources(
 
   let response: Response
   try {
+    await waitForApiReady(signal)
     response = await fetch(`${LOFAR_ENDPOINT}?${query.toString()}`, { signal })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
@@ -132,6 +218,7 @@ export async function coneSearchLofarSources(
 
   let response: Response
   try {
+    await waitForApiReady(signal)
     response = await fetch(`${LOFAR_CONE_ENDPOINT}?${query.toString()}`, { signal })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
@@ -178,6 +265,7 @@ export async function searchVlassSources(
 
   let response: Response
   try {
+    await waitForApiReady(signal)
     response = await fetch(`${VLASS_ENDPOINT}?${query.toString()}`, { signal })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
@@ -220,6 +308,7 @@ export async function coneSearchVlassSources(
 
   let response: Response
   try {
+    await waitForApiReady(signal)
     response = await fetch(`${VLASS_CONE_ENDPOINT}?${query.toString()}`, { signal })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
