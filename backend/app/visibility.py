@@ -44,6 +44,21 @@ def _fov_dimensions(location: Location) -> tuple[float, float]:
     return 60.0, 90.0
 
 
+def _inside_elliptical_fov(
+    altitudes_deg: np.ndarray,
+    east_west_deg: np.ndarray,
+    north_south_deg: np.ndarray,
+    ew_width_deg: float,
+    ns_width_deg: float,
+) -> np.ndarray:
+    """Test the projected ellipse using its east-west and north-south semi-axes."""
+
+    normalized_radius_squared = (east_west_deg / (ew_width_deg / 2.0)) ** 2 + (
+        north_south_deg / (ns_width_deg / 2.0)
+    ) ** 2
+    return (altitudes_deg >= 0.0) & (normalized_radius_squared <= 1.0)
+
+
 @dataclass(frozen=True, slots=True)
 class _CalculationTarget:
     id: str
@@ -208,10 +223,12 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                 east_west_deg = zenith_distance_deg * np.sin(azimuth_radians)
                 north_south_deg = zenith_distance_deg * np.cos(azimuth_radians)
                 fov_site = fov_sites[site_index]
-                in_fov = (
-                    (altitudes >= 0.0)
-                    & (np.abs(east_west_deg) <= fov_site.ew_width_deg / 2.0)
-                    & (np.abs(north_south_deg) <= fov_site.ns_width_deg / 2.0)
+                in_fov = _inside_elliptical_fov(
+                    altitudes,
+                    east_west_deg,
+                    north_south_deg,
+                    fov_site.ew_width_deg,
+                    fov_site.ns_width_deg,
                 )
                 fov_mask_arrays.append(in_fov)
                 fov_site.target_series.append(

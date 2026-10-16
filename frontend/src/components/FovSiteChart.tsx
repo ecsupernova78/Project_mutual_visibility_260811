@@ -27,6 +27,8 @@ interface FovSiteChartProps {
   horizonRadiusDeg?: number
 }
 
+type MarkerStatus = 'inside' | 'outside' | 'below' | 'unavailable'
+
 const VIEW_WIDTH = 520
 const PLOT_LEFT = 78
 const PLOT_TOP = 70
@@ -35,16 +37,14 @@ const PLOT_CENTER_X = PLOT_LEFT + PLOT_SIZE / 2
 const PLOT_CENTER_Y = PLOT_TOP + PLOT_SIZE / 2
 const DEGREES_PER_HALF_PLOT = 90
 const PIXELS_PER_DEGREE = PLOT_SIZE / (2 * DEGREES_PER_HALF_PLOT)
-const TICKS = [-90, -60, -30, 0, 30, 60, 90]
-const LEGEND_TOP = 505
+const TICKS = [-90, -75, -50, -25, 0, 25, 50, 75, 90]
+const LEGEND_TOP = 574
 const LEGEND_ROW_HEIGHT = 25
 const LEGEND_COLUMNS = 2
 const LEGEND_MAX_CHARACTERS = 19
 const EDGE_MARKER_INSET_DEG = 6
 
-// Use a golden-angle sequence so every source in a result has a distinct,
-// deterministic color in every site chart. The source name remains in the
-// legend because color alone cannot reliably identify 25 different objects.
+// Keep source colors stable across all site charts, even if their series order differs.
 function sourceColor(index: number) {
   const hue = Math.round((index * 137.508) % 360)
   const lightness = [29, 37, 33][index % 3]
@@ -55,7 +55,7 @@ function legendLabel(name: string, insidePlot: boolean, hasCoordinates: boolean)
   const suffix = !hasCoordinates ? ' (no data)' : insidePlot ? '' : ' (off plot)'
   const availableNameLength = LEGEND_MAX_CHARACTERS - suffix.length
   const shortenedName = name.length > availableNameLength
-    ? `${name.slice(0, availableNameLength - 1)}…`
+    ? `${name.slice(0, Math.max(0, availableNameLength - 3))}...`
     : name
   return `${shortenedName}${suffix}`
 }
@@ -76,6 +76,28 @@ function formatUtc(iso: string) {
   const time = new Date(iso)
   if (Number.isNaN(time.getTime())) return iso
   return `${time.toISOString().slice(0, 16).replace('T', ' ')} UTC`
+}
+
+function statusSymbol(status: MarkerStatus) {
+  switch (status) {
+    case 'inside': return 'O'
+    case 'outside': return 'X'
+    case 'below': return '\u25bc'
+    case 'unavailable': return '?'
+  }
+}
+
+function statusDescription(status: MarkerStatus) {
+  switch (status) {
+    case 'inside': return 'inside the field of view'
+    case 'outside': return 'above the horizon, outside the field of view'
+    case 'below': return 'at or below the horizon'
+    case 'unavailable': return 'coordinates unavailable'
+  }
+}
+
+function plotName(name: string) {
+  return name.length > 18 ? `${name.slice(0, 15)}...` : name
 }
 
 export function FovSiteChart({
@@ -101,20 +123,22 @@ export function FovSiteChart({
       const insidePlot = hasCoordinates
         && Math.abs(eastWest) <= DEGREES_PER_HALF_PLOT
         && Math.abs(northSouth) <= DEGREES_PER_HALF_PLOT
-      const inFov = series.in_fov[timeIndex] === true
+      const belowHorizon = hasCoordinates && Math.hypot(eastWest, northSouth) >= horizonRadiusDeg
+      const status: MarkerStatus = !hasCoordinates
+        ? 'unavailable'
+        : belowHorizon ? 'below' : series.in_fov[timeIndex] === true ? 'inside' : 'outside'
       const coordinateSummary = hasCoordinates
-        ? `EW ${eastWest.toFixed(1)}°, NS ${northSouth.toFixed(1)}°`
+        ? `EW ${eastWest.toFixed(1)} deg, NS ${northSouth.toFixed(1)} deg`
         : 'Coordinates unavailable'
       const positionNote = !hasCoordinates
         ? 'no position to plot'
-        : insidePlot ? '' : 'off plot; X is inset from the nearest plot boundary'
+        : insidePlot ? '' : 'off plot; symbol is inset from the nearest plot boundary'
       return {
         id: series.target_id,
         name: targetById.get(series.target_id)?.name ?? series.target_id,
         color: colorByTargetId.get(series.target_id) ?? '#111827',
-        eastWest,
-        northSouth,
-        inFov,
+        status,
+        inFov: status === 'inside',
         hasCoordinates,
         insidePlot,
         coordinateSummary,
@@ -127,8 +151,8 @@ export function FovSiteChart({
     })
   const legendRows = Math.ceil(markers.length / LEGEND_COLUMNS)
   const viewHeight = LEGEND_TOP + Math.max(legendRows, 1) * LEGEND_ROW_HEIGHT + 20
-  const fovWidth = Math.max(0, Math.min(site.ew_width_deg, 180)) * PIXELS_PER_DEGREE
-  const fovHeight = Math.max(0, Math.min(site.ns_width_deg, 180)) * PIXELS_PER_DEGREE
+  const fovRadiusX = Math.max(0, Math.min(site.ew_width_deg, 180)) * PIXELS_PER_DEGREE / 2
+  const fovRadiusY = Math.max(0, Math.min(site.ns_width_deg, 180)) * PIXELS_PER_DEGREE / 2
   const exportLabel = `${site.location_name} field of view plot`
 
   return (
@@ -147,12 +171,14 @@ export function FovSiteChart({
         >
           <title id={titleId}>{site.location_name} field of view</title>
           <desc id={descriptionId}>
-            Zenith centered sky projection at {formatUtc(timeUtc)}. East-West and North-South
-            offsets range from -90 to 90 degrees. The dashed circle marks the horizon;
-            the shaded rectangle marks the {site.ew_width_deg} by {site.ns_width_deg} degree
-            field of view. O means inside the field of view and X means outside.
-            Sources beyond the plotted square have an outlined X inset from and connected
-            to the nearest plot boundary; its plotted position is not the actual position.
+            Zenith-centered azimuthal equidistant sky projection at {formatUtc(timeUtc)}.
+            East-West and North-South offsets range from -90 to 90 degrees. The dashed
+            circle marks the horizon; the shaded ellipse marks the geometric
+            {site.ew_width_deg} by {site.ns_width_deg} degree field of view, not a
+            beam sensitivity response. O means inside the field of view,
+            X means above the horizon but outside, and the downward triangle means at
+            or below the horizon. Sources beyond the plotted square have an inset symbol
+            connected to the nearest plot boundary; that is not their true position.
           </desc>
           <rect width={VIEW_WIDTH} height={viewHeight} fill="#fff" />
           <defs>
@@ -161,8 +187,10 @@ export function FovSiteChart({
             </clipPath>
           </defs>
 
-          <text className="fov-svg-title" x={PLOT_LEFT} y="31">{site.location_name}</text>
-          <text className="fov-svg-subtitle" x={PLOT_LEFT} y="52">{formatUtc(timeUtc)}</text>
+          <text className="fov-svg-title" x={PLOT_CENTER_X} y="31">
+            {`${site.location_name}: ${site.ew_width_deg}\u00b0 EW \u00d7 ${site.ns_width_deg}\u00b0 NS`}
+          </text>
+          <text className="fov-svg-subtitle" x={PLOT_CENTER_X} y="52">{formatUtc(timeUtc)}</text>
 
           <g className="fov-grid">
             {TICKS.map((tick) => (
@@ -180,12 +208,12 @@ export function FovSiteChart({
           </g>
 
           <g clipPath={`url(#${clipId})`}>
-            <rect
+            <ellipse
               className="fov-region"
-              x={PLOT_CENTER_X - fovWidth / 2}
-              y={PLOT_CENTER_Y - fovHeight / 2}
-              width={fovWidth}
-              height={fovHeight}
+              cx={PLOT_CENTER_X}
+              cy={PLOT_CENTER_Y}
+              rx={fovRadiusX}
+              ry={fovRadiusY}
             />
             <circle
               className="fov-horizon"
@@ -193,47 +221,64 @@ export function FovSiteChart({
               cy={PLOT_CENTER_Y}
               r={horizonRadiusDeg * PIXELS_PER_DEGREE}
             />
-            <circle className="fov-zenith" cx={PLOT_CENTER_X} cy={PLOT_CENTER_Y} r="3" />
-            {markers.filter((marker) => marker.hasCoordinates).map((marker) => (
-              <g key={marker.id}>
-                {!marker.insidePlot && (
-                  <>
-                    <line
-                      className="fov-clipped-marker-leader"
-                      x1={plotX(marker.markerEastWest)}
-                      y1={plotY(marker.markerNorthSouth)}
-                      x2={plotX(marker.boundaryEastWest)}
-                      y2={plotY(marker.boundaryNorthSouth)}
-                    />
-                    <circle
-                      className="fov-clipped-marker-ring"
-                      cx={plotX(marker.markerEastWest)}
-                      cy={plotY(marker.markerNorthSouth)}
-                      r="10"
-                    />
-                  </>
-                )}
-                <text
-                  className="fov-target-marker"
-                  x={plotX(marker.markerEastWest)}
-                  y={plotY(marker.markerNorthSouth)}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fill={marker.color}
-                  data-target-id={marker.id}
-                  data-in-fov={marker.inFov}
-                  data-off-plot={!marker.insidePlot}
-                  aria-label={`${marker.name}: ${marker.inFov ? 'inside' : 'outside'} field of view${marker.positionNote ? `; ${marker.positionNote}` : ''}`}
-                >
-                  <title>{marker.name}: {marker.coordinateSummary}; {marker.inFov ? 'inside' : 'outside'} FoV{marker.positionNote ? `; ${marker.positionNote}` : ''}</title>
-                  {marker.inFov ? 'O' : 'X'}
-                </text>
-              </g>
-            ))}
+            <line className="fov-zenith-cross" x1={PLOT_CENTER_X - 8} x2={PLOT_CENTER_X + 8} y1={PLOT_CENTER_Y} y2={PLOT_CENTER_Y} />
+            <line className="fov-zenith-cross" x1={PLOT_CENTER_X} x2={PLOT_CENTER_X} y1={PLOT_CENTER_Y - 8} y2={PLOT_CENTER_Y + 8} />
+            {markers.filter((marker) => marker.hasCoordinates).map((marker) => {
+              const markerX = plotX(marker.markerEastWest)
+              const markerY = plotY(marker.markerNorthSouth)
+              const labelOnLeft = marker.markerEastWest >= 60
+              const labelY = marker.markerNorthSouth >= 80 ? markerY + 20 : markerY - 10
+              const details = `${marker.name}: ${marker.coordinateSummary}; ${statusDescription(marker.status)}${marker.positionNote ? `; ${marker.positionNote}` : ''}`
+              return (
+                <g key={marker.id}>
+                  {!marker.insidePlot && (
+                    <>
+                      <line
+                        className="fov-clipped-marker-leader"
+                        x1={markerX}
+                        y1={markerY}
+                        x2={plotX(marker.boundaryEastWest)}
+                        y2={plotY(marker.boundaryNorthSouth)}
+                      />
+                      <circle className="fov-clipped-marker-ring" cx={markerX} cy={markerY} r="10" />
+                    </>
+                  )}
+                  <text
+                    className="fov-target-marker"
+                    x={markerX}
+                    y={markerY}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill={marker.color}
+                    data-target-id={marker.id}
+                    data-in-fov={marker.inFov}
+                    data-fov-status={marker.status}
+                    data-off-plot={!marker.insidePlot}
+                    aria-label={details}
+                  >
+                    <title>{details}</title>
+                    {statusSymbol(marker.status)}
+                  </text>
+                  <text
+                    className="fov-target-name"
+                    x={markerX + (labelOnLeft ? -12 : 12)}
+                    y={labelY}
+                    textAnchor={labelOnLeft ? 'end' : 'start'}
+                    fill={marker.color}
+                    data-target-label={marker.id}
+                    aria-label={marker.name}
+                  >
+                    <title>{marker.name}</title>
+                    {plotName(marker.name)}
+                  </text>
+                </g>
+              )
+            })}
           </g>
+
           <rect className="fov-plot-border" x={PLOT_LEFT} y={PLOT_TOP} width={PLOT_SIZE} height={PLOT_SIZE} />
-          <text className="fov-zenith-label" x={PLOT_CENTER_X + 17} y={PLOT_CENTER_Y - 17}>Zenith</text>
-          <text className="fov-axis-title" x={PLOT_CENTER_X} y="489" textAnchor="middle">EW offset [deg]</text>
+          <text className="fov-zenith-label" x={PLOT_CENTER_X + 13} y={PLOT_CENTER_Y - 15}>Zenith</text>
+          <text className="fov-axis-title" x={PLOT_CENTER_X} y="489" textAnchor="middle">EW offset [deg] (East +)</text>
           <text
             className="fov-axis-title"
             x="18"
@@ -241,7 +286,16 @@ export function FovSiteChart({
             textAnchor="middle"
             transform={`rotate(-90 18 ${PLOT_CENTER_Y})`}
           >
-            NS offset [deg]
+            NS offset [deg] (North +)
+          </text>
+
+          <g className="fov-symbol-key" aria-label="Marker meanings">
+            <text x={PLOT_LEFT} y="518">O  Inside FoV</text>
+            <text x={PLOT_LEFT + 139} y="518">X  Outside FoV</text>
+            <text x={PLOT_LEFT + 283} y="518">{'\u25bc  Below horizon'}</text>
+          </g>
+          <text className="fov-method-note" x={PLOT_CENTER_X} y="548" textAnchor="middle">
+            Azimuthal equidistant · geometric FoV, not beam response
           </text>
 
           <g className="fov-target-legend" aria-label="Target field of view status">
@@ -253,10 +307,10 @@ export function FovSiteChart({
               return (
                 <g key={marker.id}>
                   <text x={x} y={y} fill={marker.color} className="fov-legend-status">
-                    {marker.inFov ? 'O' : 'X'}
+                    {statusSymbol(marker.status)}
                   </text>
                   <text x={x + 20} y={y} className="fov-legend-label">
-                    <title>{marker.name}: {marker.coordinateSummary}; {marker.inFov ? 'inside' : 'outside'} FoV{marker.positionNote ? `; ${marker.positionNote}` : ''}</title>
+                    <title>{marker.name}: {marker.coordinateSummary}; {statusDescription(marker.status)}{marker.positionNote ? `; ${marker.positionNote}` : ''}</title>
                     {legendLabel(marker.name, marker.insidePlot, marker.hasCoordinates)}
                   </text>
                 </g>

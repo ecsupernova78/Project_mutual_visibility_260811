@@ -1,6 +1,6 @@
 # Mutual Visibility API
 
-선택한 1~10개 관측지와 ICRS 카탈로그 천체를 받아 UTC 시간축의 기하학적 AltAz 고도를 계산하는 FastAPI 서비스입니다. 기본 3C 목록과 ASTRON LoTSS DR3 및 VizieR VLASS 검색 결과의 좌표 snapshot을 함께 처리합니다. BURSTT 요청은 관측지별 천정 중심 FoV 투영과 공통 FoV 마스크도 반환합니다.
+선택한 1~10개 관측지와 ICRS 카탈로그 천체를 받아 UTC 시간축의 기하학적 AltAz 고도를 계산하는 FastAPI 서비스입니다. 기본 3C 목록과 ASTRON LoTSS DR3 및 VizieR VLASS 검색 결과의 좌표 snapshot을 함께 처리합니다. BURSTT 요청은 관측지별 천정 중심의 타원형 FoV 투영과 공통 FoV 마스크도 반환합니다.
 
 ## 실행
 

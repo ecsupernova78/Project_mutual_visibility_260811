@@ -79,6 +79,11 @@ function formatUtcDateTime(value: string) {
   return `${year}.${month}.${day} ${hour}:${minute} UTC`
 }
 
+function formatFovUtc(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toISOString().replace(/Z$/, '')
+}
+
 function formatCoordinate(value: number, type: 'ra' | 'dec') {
   if (type === 'ra') {
     const totalHours = ((value / 15) % 24 + 24) % 24
@@ -409,6 +414,12 @@ function Results({
     ), 0)
   })
   const safeFovTimeIndex = Math.min(Math.max(fovTimeIndex, 0), Math.max(response.times_utc.length - 1, 0))
+  const activeFovTimeUtc = response.times_utc[safeFovTimeIndex] ?? response.metadata.center_time_utc
+  const commonFovSourceNames = response.targets
+    .filter((candidate) => response.fov?.common_masks.some((mask) => (
+      mask.target_id === candidate.id && mask.in_fov[safeFovTimeIndex]
+    )))
+    .map((candidate) => candidate.name)
   const visibleTargets = response.targets.filter((target) => target.simultaneous_visible)
   const selectableTargets = mode === 'burstt' ? response.targets : visibleTargets
   const target = selectableTargets.find((candidate) => candidate.id === selectedId) ?? selectableTargets[0]
@@ -525,34 +536,44 @@ function Results({
         </header>
 
         {mode === 'burstt' && response.fov ? (
-          <div className="burstt-plot-layout">
-            <div className="burstt-altitude-plot">
-              <AltitudeChart
-                key={target.id}
-                target={target}
-                times={response.times_utc}
-                centerTime={response.metadata.center_time_utc}
-                activeIndex={safeFovTimeIndex}
-                onActiveIndexChange={(index) => setFovTimeIndex(index ?? 0)}
-                retainCursorOnLeave
-                siteFovMasks={response.fov.sites.map((site) => ({
-                  locationId: site.location_id,
-                  mask: site.target_series.find((series) => series.target_id === target.id)?.in_fov ?? [],
-                }))}
-                commonFovMask={response.fov.common_masks.find((mask) => mask.target_id === target.id)?.in_fov}
-              />
+          <div className="burstt-analysis">
+            <div
+              className="burstt-fov-summary"
+              role="status"
+              aria-label="Common FoV targets at the active UTC time"
+            >
+              <strong>UTC {formatFovUtc(activeFovTimeUtc)}</strong>
+              <span>In all selected station FoVs: {commonFovSourceNames.join(', ') || 'None'}</span>
             </div>
-            <div className="burstt-fov-plots" aria-label="Observing site fields of view">
-              {response.fov.sites.map((site) => (
-                <FovSiteChart
-                  key={site.location_id}
-                  site={site}
-                  targets={response.targets}
-                  timeIndex={safeFovTimeIndex}
-                  timeUtc={response.times_utc[safeFovTimeIndex]}
-                  horizonRadiusDeg={response.fov?.horizon_radius_deg ?? 90}
+            <div className="burstt-plot-layout">
+              <div className="burstt-altitude-plot">
+                <AltitudeChart
+                  key={target.id}
+                  target={target}
+                  times={response.times_utc}
+                  centerTime={response.metadata.center_time_utc}
+                  activeIndex={safeFovTimeIndex}
+                  onActiveIndexChange={(index) => setFovTimeIndex(index ?? 0)}
+                  retainCursorOnLeave
+                  siteFovMasks={response.fov.sites.map((site) => ({
+                    locationId: site.location_id,
+                    mask: site.target_series.find((series) => series.target_id === target.id)?.in_fov ?? [],
+                  }))}
+                  commonFovMask={response.fov.common_masks.find((mask) => mask.target_id === target.id)?.in_fov}
                 />
-              ))}
+              </div>
+              <div className="burstt-fov-plots" aria-label="Observing site fields of view">
+                {response.fov.sites.map((site) => (
+                  <FovSiteChart
+                    key={site.location_id}
+                    site={site}
+                    targets={response.targets}
+                    timeIndex={safeFovTimeIndex}
+                    timeUtc={activeFovTimeUtc}
+                    horizonRadiusDeg={response.fov?.horizon_radius_deg ?? 90}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         ) : (

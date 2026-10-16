@@ -401,6 +401,9 @@ describe('상호 가시성 인터페이스', () => {
 
     const narrabri = await screen.findByRole('region', { name: 'Narrabri (Aus) field of view' })
     const pyeongchang = screen.getByRole('region', { name: 'Pyeongchang (Kor) field of view' })
+    const fovSummary = screen.getByRole('status', { name: 'Common FoV targets at the active UTC time' })
+    expect(fovSummary).toHaveTextContent('UTC 2026-08-11T00:15:00.000')
+    expect(fovSummary).toHaveTextContent('In all selected station FoVs: 3C123')
     expect(container.querySelectorAll('.site-fov-window')).toHaveLength(2)
     expect(container.querySelectorAll('.common-fov-window')).toHaveLength(1)
     expect(narrabri.querySelector('.fov-target-marker')).toHaveTextContent('O')
@@ -414,6 +417,8 @@ describe('상호 가시성 인터페이스', () => {
     expect(narrabri.querySelector('.fov-target-marker')).toHaveTextContent('X')
     expect(pyeongchang.querySelector('.fov-target-marker')).toHaveTextContent('O')
     expect(narrabri.querySelector('.fov-svg-subtitle')).toHaveTextContent('2026-08-11 00:30 UTC')
+    expect(fovSummary).toHaveTextContent('UTC 2026-08-11T00:30:00.000')
+    expect(fovSummary).toHaveTextContent('In all selected station FoVs: None')
   })
 
   it('keeps selected sources and site FoV plots available when none passes the altitude threshold', async () => {

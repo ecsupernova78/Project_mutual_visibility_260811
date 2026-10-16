@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from app.visibility import _inside_elliptical_fov
+
 
 def test_health(client: TestClient) -> None:
     response = client.get("/health")
@@ -122,6 +124,18 @@ def test_ten_locations_are_accepted_and_eleven_rejected(client: TestClient, visi
     assert rejected.status_code == 422
 
 
+def test_elliptical_fov_excludes_rectangle_corners_and_below_horizon() -> None:
+    inside = _inside_elliptical_fov(
+        np.array([90.0, 60.0, 45.0, 90.0 - np.hypot(30.0, 45.0), -1.0]),
+        np.array([0.0, 30.0, 0.0, 30.0, 0.0]),
+        np.array([0.0, 0.0, 45.0, 45.0, 0.0]),
+        60.0,
+        90.0,
+    )
+
+    assert inside.tolist() == [True, True, True, False, False]
+
+
 def test_fov_projection_and_common_mask(
     client: TestClient, visibility_payload: dict, observing_locations: list[dict]
 ) -> None:
@@ -171,9 +185,10 @@ def test_fov_projection_and_common_mask(
                 strict=True,
             ):
                 assert np.hypot(east, north) == pytest.approx(90 - altitude, abs=2e-6)
-                assert in_fov == (
-                    altitude >= 0 and abs(east) <= site["ew_width_deg"] / 2 and abs(north) <= site["ns_width_deg"] / 2
-                )
+                normalized_radius_squared = (east / (site["ew_width_deg"] / 2)) ** 2 + (
+                    north / (site["ns_width_deg"] / 2)
+                ) ** 2
+                assert in_fov == (altitude >= 0 and normalized_radius_squared <= 1)
 
     for common in fov["common_masks"]:
         site_masks = [
