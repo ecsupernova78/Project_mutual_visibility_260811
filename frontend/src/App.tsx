@@ -10,6 +10,7 @@ import {
 import { calculateVisibility } from './api'
 import { AltitudeChart } from './components/AltitudeChart'
 import { CatalogPanel } from './components/CatalogPanel'
+import { FovSiteChart } from './components/FovSiteChart'
 import { getTargetColor } from './components/chartStyles'
 import { ObservingSitePanel } from './components/ObservingSitePanel'
 import { VisibilityOverviewChart } from './components/VisibilityOverviewChart'
@@ -37,10 +38,11 @@ interface CatalogTarget {
   coordinate: string
 }
 
-type AppTab = 'visibility' | 'sites' | 'catalog'
+type AppTab = 'visibility' | 'burstt' | 'sites' | 'catalog'
 
 const TAB_IDS: Record<AppTab, string> = {
   visibility: 'visibility-tab',
+  burstt: 'burstt-tab',
   sites: 'observing-sites-tab',
   catalog: 'catalog-tab',
 }
@@ -386,19 +388,30 @@ function TargetResultCard({
 
 function Results({
   response,
+  mode,
   selectedId,
   onSelect,
   overviewTargetIds,
   onOverviewSelectionChange,
 }: {
   response: VisibilityResponse
+  mode: 'visibility' | 'burstt'
   selectedId: string | null
   onSelect: (id: string) => void
   overviewTargetIds: ReadonlySet<string>
   onOverviewSelectionChange: (targetIds: Set<string>) => void
 }) {
+  const [fovTimeIndex, setFovTimeIndex] = useState(() => {
+    const center = new Date(response.metadata.center_time_utc).getTime()
+    return response.times_utc.reduce((best, time, index) => (
+      Math.abs(new Date(time).getTime() - center)
+        < Math.abs(new Date(response.times_utc[best]).getTime() - center) ? index : best
+    ), 0)
+  })
+  const safeFovTimeIndex = Math.min(Math.max(fovTimeIndex, 0), Math.max(response.times_utc.length - 1, 0))
   const visibleTargets = response.targets.filter((target) => target.simultaneous_visible)
-  const target = visibleTargets.find((candidate) => candidate.id === selectedId) ?? visibleTargets[0]
+  const selectableTargets = mode === 'burstt' ? response.targets : visibleTargets
+  const target = selectableTargets.find((candidate) => candidate.id === selectedId) ?? selectableTargets[0]
   const plottedTargets = visibleTargets.filter((candidate) => overviewTargetIds.has(candidate.id))
 
   const toggleOverviewTarget = (id: string) => {
@@ -424,8 +437,11 @@ function Results({
       <header className="results-header">
         <div>
           <h2>
-            Simultaneously Visible Targets <span>{visibleTargets.length}</span>
-            <small>/ {response.targets.length}</small>
+            {mode === 'burstt' ? 'Targets' : 'Simultaneously Visible Targets'}
+            {' '}<span>{selectableTargets.length}</span>
+            <small>{mode === 'burstt'
+              ? ` / ${visibleTargets.length} simultaneously visible`
+              : ` / ${response.targets.length}`}</small>
           </h2>
         </div>
         <div className="result-window">
@@ -438,8 +454,8 @@ function Results({
         </a>
       </header>
 
-      <div className="target-results" role="tablist" aria-label="Select a simultaneously visible target">
-        {visibleTargets.map((candidate) => (
+      <div className="target-results" role="tablist" aria-label={mode === 'burstt' ? 'Select a target' : 'Select a simultaneously visible target'}>
+        {selectableTargets.map((candidate) => (
           <TargetResultCard
             key={candidate.id}
             target={candidate}
@@ -508,12 +524,45 @@ function Results({
           </dl>
         </header>
 
-        <AltitudeChart
-          key={target.id}
-          target={target}
-          times={response.times_utc}
-          centerTime={response.metadata.center_time_utc}
-        />
+        {mode === 'burstt' && response.fov ? (
+          <div className="burstt-plot-layout">
+            <div className="burstt-altitude-plot">
+              <AltitudeChart
+                key={target.id}
+                target={target}
+                times={response.times_utc}
+                centerTime={response.metadata.center_time_utc}
+                activeIndex={safeFovTimeIndex}
+                onActiveIndexChange={(index) => setFovTimeIndex(index ?? 0)}
+                retainCursorOnLeave
+                siteFovMasks={response.fov.sites.map((site) => ({
+                  locationId: site.location_id,
+                  mask: site.target_series.find((series) => series.target_id === target.id)?.in_fov ?? [],
+                }))}
+                commonFovMask={response.fov.common_masks.find((mask) => mask.target_id === target.id)?.in_fov}
+              />
+            </div>
+            <div className="burstt-fov-plots" aria-label="Observing site fields of view">
+              {response.fov.sites.map((site) => (
+                <FovSiteChart
+                  key={site.location_id}
+                  site={site}
+                  targets={response.targets}
+                  timeIndex={safeFovTimeIndex}
+                  timeUtc={response.times_utc[safeFovTimeIndex]}
+                  horizonRadiusDeg={response.fov?.horizon_radius_deg ?? 90}
+                />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <AltitudeChart
+            key={target.id}
+            target={target}
+            times={response.times_utc}
+            centerTime={response.metadata.center_time_utc}
+          />
+        )}
       </section>
 
       <section
@@ -597,6 +646,7 @@ function Results({
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<AppTab>('visibility')
+  const [analysisTab, setAnalysisTab] = useState<'visibility' | 'burstt'>('visibility')
   const [initialSiteState] = useState(loadObservingSiteState)
   const [locations, setLocations] = useState<ObserverLocation[]>(initialSiteState.locations)
   const [selectedLocationIds, setSelectedLocationIds] = useState(
@@ -627,6 +677,7 @@ export default function App() {
     () => new Set(),
   )
   const [response, setResponse] = useState<VisibilityResponse | null>(null)
+  const [resultRevision, setResultRevision] = useState(0)
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null)
   const [overviewTargetIds, setOverviewTargetIds] = useState<Set<string>>(() => new Set())
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
@@ -824,6 +875,7 @@ export default function App() {
       hours_after: hoursAfter,
       step_minutes: stepMinutes,
       minimum_altitude_deg: minimumAltitude,
+      include_fov: analysisTab === 'burstt',
       target_ids: CATALOG_TARGETS.filter((target) => selectedTargetIds.has(target.id)).map(
         (target) => target.id,
       ),
@@ -836,8 +888,9 @@ export default function App() {
       const nextResponse = await calculateVisibility(payload, controller.signal)
       if (controller.signal.aborted) return
       setResponse(nextResponse)
+      setResultRevision((revision) => revision + 1)
       const firstVisible = nextResponse.targets.find((target) => target.simultaneous_visible)
-      setSelectedResultId(firstVisible?.id ?? null)
+      setSelectedResultId(firstVisible?.id ?? (analysisTab === 'burstt' ? nextResponse.targets[0]?.id ?? null : null))
       setOverviewTargetIds(new Set(
         nextResponse.targets
           .filter((target) => target.simultaneous_visible)
@@ -852,7 +905,7 @@ export default function App() {
   }
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    const tabs: AppTab[] = ['visibility', 'sites', 'catalog']
+    const tabs: AppTab[] = ['visibility', 'burstt', 'sites', 'catalog']
     const currentIndex = tabs.indexOf(activeTab)
     let nextIndex: number | null = null
     if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length
@@ -862,11 +915,15 @@ export default function App() {
     if (nextIndex === null) return
     event.preventDefault()
     const nextTab = tabs[nextIndex]
-    setActiveTab(nextTab)
+    activateTab(nextTab)
     document.getElementById(TAB_IDS[nextTab])?.focus()
   }
 
   const activateTab = (nextTab: AppTab, moveFocus = false) => {
+    if ((nextTab === 'visibility' || nextTab === 'burstt') && nextTab !== analysisTab) {
+      invalidateResults()
+      setAnalysisTab(nextTab)
+    }
     setActiveTab(nextTab)
     if (moveFocus) {
       window.setTimeout(() => document.getElementById(TAB_IDS[nextTab])?.focus(), 0)
@@ -898,6 +955,18 @@ export default function App() {
           Observation Visibility
         </button>
         <button
+          id="burstt-tab"
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'burstt'}
+          aria-controls="burstt-panel"
+          tabIndex={activeTab === 'burstt' ? 0 : -1}
+          onKeyDown={handleTabKeyDown}
+          onClick={() => activateTab('burstt')}
+        >
+          BURSTT FoV
+        </button>
+        <button
           id="observing-sites-tab"
           type="button"
           role="tab"
@@ -926,12 +995,18 @@ export default function App() {
         </button>
       </nav>
 
-      <main
-        id="visibility-panel"
-        className="workspace"
+      <div
+        id={analysisTab === 'visibility' ? 'burstt-panel' : 'visibility-panel'}
         role="tabpanel"
-        aria-labelledby="visibility-tab"
-        hidden={activeTab !== 'visibility'}
+        aria-labelledby={analysisTab === 'visibility' ? 'burstt-tab' : 'visibility-tab'}
+        hidden
+      />
+      <main
+        id={`${analysisTab}-panel`}
+        className={`workspace ${analysisTab === 'burstt' ? 'burstt-workspace' : ''}`}
+        role="tabpanel"
+        aria-labelledby={TAB_IDS[analysisTab]}
+        hidden={activeTab !== analysisTab}
       >
         <aside className="control-panel" aria-labelledby="conditions-title">
           <div className="panel-heading">
@@ -970,7 +1045,7 @@ export default function App() {
               </div>
               {selectedLocationIds.size >= MAXIMUM_SELECTED_SITES && (
                 <p id="main-site-selection-limit" className="site-limit-note">
-                  Three sites are selected. Deselect one before choosing another.
+                  {MAXIMUM_SELECTED_SITES} sites are selected. Deselect one before choosing another.
                 </p>
               )}
               {locationSelectionError && (
@@ -1188,7 +1263,9 @@ export default function App() {
           )}
           {status === 'success' && response && (
             <Results
+              key={resultRevision}
               response={response}
+              mode={analysisTab}
               selectedId={selectedResultId}
               onSelect={setSelectedResultId}
               overviewTargetIds={overviewTargetIds}
@@ -1209,7 +1286,7 @@ export default function App() {
         onUpdate={updateLocation}
         onDelete={deleteLocation}
         onToggle={toggleLocation}
-        onGoToVisibility={() => activateTab('visibility', true)}
+        onGoToVisibility={() => activateTab(analysisTab, true)}
       />
 
       <CatalogPanel
@@ -1218,7 +1295,7 @@ export default function App() {
         selectedTargetCount={selectedTargetIds.size + selectedImportedTargetIds.size}
         maximumTargetCount={MAXIMUM_TARGET_COUNT}
         onToggleSource={toggleImportedSource}
-        onGoToVisibility={() => activateTab('visibility', true)}
+        onGoToVisibility={() => activateTab(analysisTab, true)}
       />
 
     </div>

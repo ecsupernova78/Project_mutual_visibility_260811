@@ -4,6 +4,7 @@ import {
   createObservingSiteId,
   DEFAULT_OBSERVING_SITES,
   loadObservingSiteState,
+  MAXIMUM_SELECTED_SITES,
   OBSERVING_SITE_STORAGE_KEY,
   saveObservingSiteState,
 } from './observingSiteStorage'
@@ -28,7 +29,7 @@ describe('observing-site storage', () => {
     expect(state.storageStatus).toBe('missing')
   })
 
-  it('restores custom sites, drops unavailable selections, and limits selection to three', () => {
+  it('restores custom sites and drops duplicate or unavailable selections', () => {
     const storage = memoryStorage(JSON.stringify({
       version: 1,
       locations: [
@@ -60,8 +61,35 @@ describe('observing-site storage', () => {
       'site-mauna-kea',
       'narrabri',
       'pyeongchang',
+      'fushan',
     ])
     expect(state.storageStatus).toBe('valid')
+  })
+
+  it('keeps ten selected sites across storage and excludes an eleventh', () => {
+    const customSites = Array.from({ length: 8 }, (_, index) => ({
+      id: `site-custom-${index}`,
+      name: `Custom Site ${index}`,
+      latitude_deg: index,
+      longitude_deg: index,
+      elevation_m: 0,
+    }))
+    const locations = [...DEFAULT_OBSERVING_SITES, ...customSites]
+    const selectedIds = locations.map((location) => location.id)
+    expect(MAXIMUM_SELECTED_SITES).toBe(10)
+
+    const storage = memoryStorage()
+    expect(saveObservingSiteState(locations, new Set(selectedIds), storage)).toBe('saved')
+    const persisted = JSON.parse(storage.value() ?? '{}') as { selected_location_ids: string[] }
+    expect(persisted.selected_location_ids).toEqual(selectedIds.slice(0, 10))
+    expect([...loadObservingSiteState(storage).selectedLocationIds]).toEqual(selectedIds.slice(0, 10))
+
+    const oversizedStorage = memoryStorage(JSON.stringify({
+      version: 1,
+      locations,
+      selected_location_ids: selectedIds,
+    }))
+    expect([...loadObservingSiteState(oversizedStorage).selectedLocationIds]).toEqual(selectedIds.slice(0, 10))
   })
 
   it('falls back safely for malformed JSON, duplicate ids, and invalid coordinates', () => {

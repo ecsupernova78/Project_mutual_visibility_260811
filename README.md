@@ -6,7 +6,7 @@
 
 현재 구현된 첫 번째 수직 기능은 다음과 같습니다.
 
-- Narrabri, Pyeongchang, Fushan과 사용자 저장 관측지 중 1–3개 선택 및 좌표 편집
+- Narrabri, Pyeongchang, Fushan과 사용자 저장 관측지 중 1–10개 선택 및 좌표 편집
 - 별도 Observing Sites 탭에서 관측지 이름·위도·경도·고도를 브라우저에 저장하고 목록에서 수정·선택
 - 선택한 관측지를 영문·라틴 표기 중심의 밝은 지도에 번호 핀·연결선으로 표시하고 모든 관측지 쌍의 대권거리 계산
 - 중심 UTC, 전후 시간창, 샘플 간격, 최소 고도 설정
@@ -14,6 +14,7 @@
 - 별도 Catalog Search 탭의 LOFAR DR3·VLASS 하위 탭에서 밝기 순 목록 또는 ICRS 좌표 주변 cone search를 실행하고 계산 대상으로 가져오기
 - LoTSS/VLASS 형태 코드와, 이용 가능한 경우 SIMBAD의 친숙한 이름·물리 유형·위치 대응 거리 표시
 - 관측지별 0–90° 시간–고도 곡선과 지평선·기준 UTC 표시
+- BURSTT FoV 탭에서 같은 관측 조건을 사용해 천체별·관측지별 FoV 위치를 시각화하고, 모든 관측지의 FoV가 겹치는 시간대를 강조
 - 모든 선택 관측지에서 동시에 임계 고도 이상인 샘플과 연속 샘플 묶음 강조
 - target별 시간창 내 최장 공통 가시 구간을 샘플 기준으로 표시
 - 상세 그래프 아래에 전체 시간창 중 공통 가시 샘플이 존재하는 target 전체 시간–고도 개요 표시
@@ -76,8 +77,8 @@ Gaussian, `C`는 다른 source와 같은 island 안의 단일 Gaussian source를
 
 Observing Sites 지도는 API key 없이 MapLibre GL과 OpenFreeMap Positron vector style 한 종류를
 사용합니다. 단순한 저채도 배경 위에 도시·국가 등의 지명을 영어 또는 라틴 문자로 표시하며, 영어·라틴
-이름이 없는 지명은 현지 문자를 대신 표시하지 않고 생략합니다. 사용자가 저장한 관측지 이름과 선택 순서도 함께 표시됩니다. 선택 순서대로 번호를 부여하고 두 곳이면 1개·세 곳이면
-중복 없는 3개의 조합을 표시합니다. 거리는 고도를 제외한 평균 지구 반지름 기반 대권거리이므로
+이름이 없는 지명은 현지 문자를 대신 표시하지 않고 생략합니다. 사용자가 저장한 관측지 이름과 선택 순서도 함께 표시됩니다. 선택 순서대로 번호를 부여하고 선택한 최대 10개 관측지의
+모든 중복 없는 관측지 쌍의 거리를 표시합니다(10곳이면 45개). 거리는 고도를 제외한 평균 지구 반지름 기반 대권거리이므로
 지표상의 경로 길이이며 3차원 직선거리는 아닙니다. 배경 지도는 zoom 18까지 화면 해상도에 맞춰 vector
 선과 글자를 다시 그리므로 raster 확대에 의한 픽셀화가 없습니다. Vite용 MapLibre worker URL을 명시해
 개발·배포 빌드에서 동일하게 렌더링하며, 배경 지도 요청에 실패해도 관측지 pin과 거리선은 독립적으로
@@ -144,15 +145,11 @@ upstream 검색의 동시 실행 수도 제한하며, 용량을 초과한 새 �
 
 `main` 브랜치는 [GitHub 저장소](https://github.com/ecsupernova78/Project_mutual_visibility_260811)에 연결되어 있고, 푸시와 pull request마다 프런트엔드·백엔드 CI를 실행합니다.
 
-공개 서비스는 두 부분으로 분리합니다.
-
-- OpenAI Sites는 `dist`의 React 정적 파일을 전 세계에서 접근 가능한 HTTPS 주소로 제공합니다.
-- Render Free Web Service는 `render.yaml`에 따라 `backend`를 Python 3.14 환경에 설치하고 FastAPI/Uvicorn을 실행합니다.
-
-Render에는 `CORS_ORIGINS=https://mutual-visibility.kcic-researchers.chatgpt.site`가 설정되며, Sites용
-프로덕션 빌드는 `VITE_API_BASE_URL`에 실제 Render HTTPS 주소를 넣어 생성합니다. 배포가 완료되면 로컬
-`npm run dev`와 `npm run dev:api`는 실행할 필요가 없습니다. Sites가 프런트엔드를 제공하고 Render의 원격
-컨테이너가 API process를 관리합니다.
+공개 서비스는 `render.yaml`에 정의된 Render 정적 사이트와 무료 FastAPI Web Service로 구성됩니다.
+`main`에 푸시하면 GitHub Actions 검증 후 Render가 두 서비스를 자동 배포합니다. 정적 사이트는
+`https://mutual-visibility-260811.onrender.com`에서 접속할 수 있으며, 로컬에서 `npm run dev`나
+`npm run dev:api`를 계속 실행할 필요가 없습니다. 배포 설정과 최초 연결 방법은
+[Render 배포 안내](docs/RENDER_DEPLOYMENT.md)를 참고하십시오.
 
 Render 무료 API는 15분 동안 수신 요청이 없으면 sleep 상태로 전환됩니다. 링크가 삭제되는 것은 아니며,
 다음 요청이 원격 instance를 자동으로 다시 시작합니다. 이 첫 요청은 약 1분 지연될 수 있습니다. 항상 즉시

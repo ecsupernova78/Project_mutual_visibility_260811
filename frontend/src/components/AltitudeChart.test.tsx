@@ -128,4 +128,18 @@ describe('AltitudeChart', () => {
       'Altitude from 0 to 90 degrees',
     )
   })
+
+  it('maps the middle of the actual plot hit area to the middle timestamp', () => {
+    const sampleTimes = [...times, '2026-08-11T00:30:00Z']
+    const { container } = render(
+      <AltitudeChart target={target()} times={sampleTimes} centerTime={sampleTimes[1]} />,
+    )
+    const hitArea = container.querySelector('.chart-hit-area') as SVGRectElement
+    Object.defineProperty(hitArea, 'getBoundingClientRect', {
+      value: () => ({ left: 100, width: 908 }),
+    })
+
+    fireEvent.pointerMove(hitArea, { clientX: 554 })
+    expect(screen.getByRole('slider', { name: '3C 84 time (UTC)' })).toHaveValue('1')
+  })
 })

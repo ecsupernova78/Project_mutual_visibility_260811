@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { getTargetColor } from './chartStyles'
+import { getSiteChartStyle, getTargetColor } from './chartStyles'
+
+describe('observing-site chart styles', () => {
+  it('distinguishes all ten supported site series', () => {
+    const styles = Array.from({ length: 10 }, (_, index) => getSiteChartStyle(`custom-${index}`, index))
+    expect(new Set(styles.map(({ dash }) => dash ?? 'solid')).size).toBe(10)
+    expect(new Set(styles.map(({ color }) => color)).size).toBe(10)
+  })
+})
 
 describe('dynamic catalog target colors', () => {
   it('keeps an imported target color independent of a filtered-array index', () => {

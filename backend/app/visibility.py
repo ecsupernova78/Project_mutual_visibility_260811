@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -14,6 +15,11 @@ from astropy.utils import iers
 from app.catalog import TARGETS_BY_ID
 from app.models import (
     CalculationMetadata,
+    FovCommonMask,
+    FovResponse,
+    FovSite,
+    FovTargetSeries,
+    Location,
     LocationSeries,
     TargetVisibility,
     VisibilityRequest,
@@ -26,6 +32,16 @@ from app.models import (
 iers.conf.auto_download = False
 iers.conf.auto_max_age = None
 iers.conf.iers_degraded_accuracy = "warn"
+
+
+def _fov_dimensions(location: Location) -> tuple[float, float]:
+    """Return full east-west and north-south widths for the named instrument."""
+
+    if any(
+        re.search(r"(?<![A-Za-z0-9])LTN(?![A-Za-z0-9])", value, re.IGNORECASE) for value in (location.id, location.name)
+    ):
+        return 70.0, 80.0
+    return 60.0, 90.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,15 +165,32 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
         for location in request.locations
     ]
 
+    fov_sites: list[FovSite] = []
+    if request.include_fov:
+        for location in request.locations:
+            ew_width_deg, ns_width_deg = _fov_dimensions(location)
+            fov_sites.append(
+                FovSite(
+                    location_id=location.id,
+                    location_name=location.name,
+                    ew_width_deg=ew_width_deg,
+                    ns_width_deg=ns_width_deg,
+                    target_series=[],
+                )
+            )
+    fov_common_masks: list[FovCommonMask] = []
+
     target_results: list[TargetVisibility] = []
     for target in _calculation_targets(request):
         coordinate = target.coordinate
         altitude_arrays: list[np.ndarray] = []
         location_series: list[LocationSeries] = []
+        fov_mask_arrays: list[np.ndarray] = []
 
-        for location, earth_location in zip(request.locations, earth_locations, strict=True):
+        for site_index, (location, earth_location) in enumerate(zip(request.locations, earth_locations, strict=True)):
             frame = AltAz(obstime=astropy_times, location=earth_location, pressure=0 * u.hPa)
-            altitudes = np.asarray(coordinate.transform_to(frame).alt.to_value(u.deg), dtype=float)
+            altaz = coordinate.transform_to(frame)
+            altitudes = np.asarray(altaz.alt.to_value(u.deg), dtype=float)
             altitude_arrays.append(altitudes)
             location_series.append(
                 LocationSeries(
@@ -165,6 +198,34 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                     location_name=location.name,
                     altitudes_deg=np.round(altitudes, 6).tolist(),
                 )
+            )
+
+            if request.include_fov:
+                # Zenithal equidistant projection: the zenith is (0, 0),
+                # east is +x, north is +y, and the horizon is the r=90 circle.
+                azimuth_radians = np.deg2rad(np.asarray(altaz.az.to_value(u.deg), dtype=float))
+                zenith_distance_deg = 90.0 - altitudes
+                east_west_deg = zenith_distance_deg * np.sin(azimuth_radians)
+                north_south_deg = zenith_distance_deg * np.cos(azimuth_radians)
+                fov_site = fov_sites[site_index]
+                in_fov = (
+                    (altitudes >= 0.0)
+                    & (np.abs(east_west_deg) <= fov_site.ew_width_deg / 2.0)
+                    & (np.abs(north_south_deg) <= fov_site.ns_width_deg / 2.0)
+                )
+                fov_mask_arrays.append(in_fov)
+                fov_site.target_series.append(
+                    FovTargetSeries(
+                        target_id=target.id,
+                        east_west_deg=np.round(east_west_deg, 6).tolist(),
+                        north_south_deg=np.round(north_south_deg, 6).tolist(),
+                        in_fov=in_fov.tolist(),
+                    )
+                )
+
+        if request.include_fov:
+            fov_common_masks.append(
+                FovCommonMask(target_id=target.id, in_fov=np.all(np.stack(fov_mask_arrays), axis=0).tolist())
             )
 
         # The common altitude is the limiting (lowest) altitude across every
@@ -223,4 +284,5 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
             target_count=len(target_results),
             minimum_altitude_deg=request.minimum_altitude_deg,
         ),
+        fov=FovResponse(sites=fov_sites, common_masks=fov_common_masks) if request.include_fov else None,
     )

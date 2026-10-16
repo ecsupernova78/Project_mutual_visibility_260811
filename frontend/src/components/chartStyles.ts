@@ -14,6 +14,13 @@ const FALLBACK_STYLES: SiteChartStyle[] = [
   SITE_STYLES.narrabri,
   SITE_STYLES.pyeongchang,
   SITE_STYLES.fushan,
+  { color: '#a13d7e', dash: '12 4 3 4', kind: 'dashed' },
+  { color: '#357963', dash: '4 3 12 3', kind: 'dashed' },
+  { color: '#8d4224', dash: '14 3 2 3 2 3', kind: 'dashed' },
+  { color: '#3156a3', dash: '6 3 1 3', kind: 'dashed' },
+  { color: '#596a16', dash: '18 5', kind: 'dashed' },
+  { color: '#a33447', dash: '4 5', kind: 'dotted' },
+  { color: '#454a9b', dash: '10 3 3 3', kind: 'dashed' },
 ]
 
 export function getSiteChartStyle(locationId: string, fallbackIndex = 0) {

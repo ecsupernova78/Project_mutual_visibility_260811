@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from itertools import permutations
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -92,6 +93,94 @@ def test_one_to_three_locations_use_all_selected_sites(
         expected_common_altitudes = [min(sample_altitudes) for sample_altitudes in zip(*altitude_rows, strict=True)]
         assert target["simultaneous_mask"] == expected_mask
         assert target["max_common_altitude_deg"] == pytest.approx(max(expected_common_altitudes), abs=1e-5)
+
+
+def test_ten_locations_are_accepted_and_eleven_rejected(client: TestClient, visibility_payload: dict) -> None:
+    payload = deepcopy(visibility_payload)
+    payload["locations"] = [
+        {
+            "id": f"site-{index}",
+            "name": f"Site {index}",
+            "latitude_deg": -30.0 + index,
+            "longitude_deg": 120.0 + index,
+            "elevation_m": 0,
+        }
+        for index in range(10)
+    ]
+    payload["target_ids"] = ["3c123"]
+    payload["hours_before"] = 1
+    payload["hours_after"] = 1
+    payload["step_minutes"] = 60
+
+    accepted = client.post("/api/v1/visibility/altitude-series", json=payload)
+    assert accepted.status_code == 200
+    assert accepted.json()["metadata"]["location_count"] == 10
+    assert len(accepted.json()["targets"][0]["location_series"]) == 10
+
+    payload["locations"].append({**payload["locations"][0], "id": "site-10", "name": "Site 10"})
+    rejected = client.post("/api/v1/visibility/altitude-series", json=payload)
+    assert rejected.status_code == 422
+
+
+def test_fov_projection_and_common_mask(
+    client: TestClient, visibility_payload: dict, observing_locations: list[dict]
+) -> None:
+    payload = deepcopy(visibility_payload)
+    payload.update(
+        {
+            "locations": [
+                deepcopy(observing_locations[2]),
+                {**deepcopy(observing_locations[2]), "id": "ltn", "name": "LTN (Taiwan)"},
+            ],
+            "hours_before": 1,
+            "hours_after": 1,
+            "step_minutes": 60,
+            "target_ids": ["3c123", "3c273"],
+        }
+    )
+
+    ordinary = client.post("/api/v1/visibility/altitude-series", json=payload)
+    assert ordinary.status_code == 200
+    assert ordinary.json()["fov"] is None
+
+    payload["include_fov"] = True
+    response = client.post("/api/v1/visibility/altitude-series", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    fov = body["fov"]
+    assert fov["projection"] == "zenithal_equidistant"
+    assert fov["horizon_radius_deg"] == 90
+    assert [(site["ew_width_deg"], site["ns_width_deg"]) for site in fov["sites"]] == [(60, 90), (70, 80)]
+
+    for site, location in zip(fov["sites"], body["locations"], strict=True):
+        assert site["location_id"] == location["id"]
+        assert len(site["target_series"]) == 2
+        for target_series in site["target_series"]:
+            target = next(target for target in body["targets"] if target["id"] == target_series["target_id"])
+            altitude_series = next(
+                series["altitudes_deg"]
+                for series in target["location_series"]
+                if series["location_id"] == site["location_id"]
+            )
+            assert len(target_series["east_west_deg"]) == len(body["times_utc"])
+            for east, north, altitude, in_fov in zip(
+                target_series["east_west_deg"],
+                target_series["north_south_deg"],
+                altitude_series,
+                target_series["in_fov"],
+                strict=True,
+            ):
+                assert np.hypot(east, north) == pytest.approx(90 - altitude, abs=2e-6)
+                assert in_fov == (
+                    altitude >= 0 and abs(east) <= site["ew_width_deg"] / 2 and abs(north) <= site["ns_width_deg"] / 2
+                )
+
+    for common in fov["common_masks"]:
+        site_masks = [
+            next(series["in_fov"] for series in site["target_series"] if series["target_id"] == common["target_id"])
+            for site in fov["sites"]
+        ]
+        assert common["in_fov"] == [all(values) for values in zip(*site_masks, strict=True)]
 
 
 def test_location_permutations_preserve_common_result(
@@ -219,9 +308,9 @@ def test_validation_rejects_bad_inputs(
     invalid_payloads.append(no_locations)
 
     too_many_locations = deepcopy(visibility_payload)
-    fourth_location = deepcopy(observing_locations[0])
-    fourth_location.update({"id": "fourth-site", "name": "Fourth site"})
-    too_many_locations["locations"] = [*deepcopy(observing_locations), fourth_location]
+    too_many_locations["locations"] = [
+        {**deepcopy(observing_locations[0]), "id": f"site-{index}", "name": f"Site {index}"} for index in range(11)
+    ]
     invalid_payloads.append(too_many_locations)
 
     invalid_latitude = deepcopy(visibility_payload)

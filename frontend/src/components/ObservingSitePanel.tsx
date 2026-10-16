@@ -461,7 +461,7 @@ export function ObservingSitePanel({
           </div>
           {selectionAtLimit && (
             <p id="site-selection-limit" className="site-limit-note">
-              Three sites are selected. Deselect one before choosing another.
+              {maximumSelected} sites are selected. Deselect one before choosing another.
             </p>
           )}
         </section>

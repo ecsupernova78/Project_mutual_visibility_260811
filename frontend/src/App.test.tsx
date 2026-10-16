@@ -127,14 +127,19 @@ describe('상호 가시성 인터페이스', () => {
     visibilityTab.focus()
     await user.keyboard('{ArrowRight}')
 
+    const bursttTab = screen.getByRole('tab', { name: 'BURSTT FoV' })
+    expect(bursttTab).toHaveFocus()
+    expect(bursttTab).toHaveAttribute('aria-selected', 'true')
+    await user.keyboard('{ArrowRight}')
+
     const siteTab = screen.getByRole('tab', { name: /Observing Sites/ })
     expect(siteTab).toHaveFocus()
     expect(siteTab).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tabpanel', { name: /Observing Sites/ })).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: 'Use Selected Sites' }))
-    await waitFor(() => expect(visibilityTab).toHaveFocus())
-    expect(visibilityTab).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() => expect(bursttTab).toHaveFocus())
+    expect(bursttTab).toHaveAttribute('aria-selected', 'true')
 
     await user.click(screen.getByRole('button', { name: 'Manage Sites' }))
     await waitFor(() => expect(siteTab).toHaveFocus())
@@ -353,6 +358,96 @@ describe('상호 가시성 인터페이스', () => {
         name: /Altitude–time data in UTC by observing site for simultaneously visible targets/,
       }),
     ).toBeInTheDocument()
+  })
+
+  it('links the BURSTT time cursor to every site FoV and shades common FoV times', async () => {
+    const user = userEvent.setup()
+    const fovResponse = {
+      ...responseBody,
+      fov: {
+        projection: 'zenithal_equidistant',
+        horizon_radius_deg: 90,
+        sites: [
+          {
+            location_id: 'narrabri', location_name: 'Narrabri (Aus)',
+            ew_width_deg: 60, ns_width_deg: 90,
+            target_series: [{
+              target_id: '3c123', east_west_deg: [45, 0, 40],
+              north_south_deg: [0, 0, 0], in_fov: [false, true, false],
+            }],
+          },
+          {
+            location_id: 'pyeongchang', location_name: 'Pyeongchang (Kor)',
+            ew_width_deg: 60, ns_width_deg: 90,
+            target_series: [{
+              target_id: '3c123', east_west_deg: [0, 0, 0],
+              north_south_deg: [50, 10, 0], in_fov: [false, true, true],
+            }],
+          },
+        ],
+        common_masks: [{ target_id: '3c123', in_fov: [false, true, false] }],
+      },
+    }
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify(fovResponse),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ))
+    const { container } = render(<App />)
+
+    await user.click(screen.getByRole('tab', { name: 'BURSTT FoV' }))
+    expect(screen.getByRole('tabpanel', { name: 'BURSTT FoV' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Observation Setup' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
+
+    const narrabri = await screen.findByRole('region', { name: 'Narrabri (Aus) field of view' })
+    const pyeongchang = screen.getByRole('region', { name: 'Pyeongchang (Kor) field of view' })
+    expect(container.querySelectorAll('.site-fov-window')).toHaveLength(2)
+    expect(container.querySelectorAll('.common-fov-window')).toHaveLength(1)
+    expect(narrabri.querySelector('.fov-target-marker')).toHaveTextContent('O')
+    expect(pyeongchang.querySelector('.fov-target-marker')).toHaveTextContent('O')
+
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as { include_fov: boolean }
+    expect(payload.include_fov).toBe(true)
+    fireEvent.change(screen.getByRole('slider', { name: '3C123 time (UTC)' }), {
+      target: { value: '2' },
+    })
+    expect(narrabri.querySelector('.fov-target-marker')).toHaveTextContent('X')
+    expect(pyeongchang.querySelector('.fov-target-marker')).toHaveTextContent('O')
+    expect(narrabri.querySelector('.fov-svg-subtitle')).toHaveTextContent('2026-08-11 00:30 UTC')
+  })
+
+  it('keeps selected sources and site FoV plots available when none passes the altitude threshold', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      ...responseBody,
+      visible_target_count: 0,
+      targets: responseBody.targets.map((target) => ({
+        ...target,
+        simultaneous_visible: false,
+        simultaneous_mask: [false, false, false],
+        visible_intervals: [],
+      })),
+      fov: {
+        projection: 'zenithal_equidistant', horizon_radius_deg: 90,
+        sites: [{
+          location_id: 'narrabri', location_name: 'Narrabri (Aus)',
+          ew_width_deg: 60, ns_width_deg: 90,
+          target_series: [{
+            target_id: '3c123', east_west_deg: [50, 45, 40],
+            north_south_deg: [0, 0, 0], in_fov: [false, false, false],
+          }],
+        }],
+        common_masks: [{ target_id: '3c123', in_fov: [false, false, false] }],
+      },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    render(<App />)
+
+    await user.click(screen.getByRole('tab', { name: 'BURSTT FoV' }))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
+
+    expect(await screen.findByRole('region', { name: 'Narrabri (Aus) field of view' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: /3C123/ })).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: '3C123 time (UTC)' })).toBeInTheDocument()
   })
 
   it('LOFAR DR3를 검색해 선택한 천체 snapshot을 계산 요청에 함께 보낸다', async () => {

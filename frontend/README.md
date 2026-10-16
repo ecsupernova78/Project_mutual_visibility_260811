@@ -1,6 +1,6 @@
 # 공통하늘 프런트엔드
 
-선택한 1–3개 관측지에서 함께 보이는 카탈로그 천체의 시간–고도 곡선을 비교하는 React 19 + TypeScript 단일 페이지 앱입니다.
+선택한 1–10개 관측지에서 함께 보이는 카탈로그 천체의 시간–고도 곡선을 비교하는 React 19 + TypeScript 단일 페이지 앱입니다.
 
 개발 서버는 `/api` 요청을 `http://127.0.0.1:8000`으로 전달합니다. 저장소 루트에서 환경 활성화 후 아래 명령을 사용할 수 있습니다.
 
@@ -12,12 +12,12 @@ npm run test --workspace frontend
 ```
 
 Vite는 저장소 루트의 `.env.local`에서 `VITE_API_BASE_URL`을 읽습니다. 값을 생략하면 개발 서버의 `/api`
-proxy를 사용하고, 공개 Sites 빌드에서는 실제 FastAPI HTTPS origin을 지정해야 합니다. 프로덕션 파일은
-Sites가 패키징할 수 있도록 저장소 루트의 `dist`에 생성됩니다.
+proxy를 사용하고, 공개 Render 정적 사이트 빌드에서는 실제 FastAPI HTTPS origin을 지정해야 합니다. 프로덕션 파일은
+Render가 제공할 수 있도록 저장소 루트의 `dist`에 생성됩니다.
 
-`관측 가시성` 탭에는 Narrabri, Pyeongchang, Fushan 관측지 선택과 좌표, UTC 시간창, 계산 간격, 최소 고도와 3C 카탈로그 선택이 있습니다. 한 곳부터 세 곳까지 선택할 수 있으며 모든 선택 관측지가 같은 샘플에서 기준 고도 이상일 때 공통 가시로 판정합니다.
+`Observation Visibility`와 `BURSTT FoV` 탭에는 같은 관측지·천체 선택, UTC 시간창, 계산 간격 및 최소 고도 입력이 있습니다. 한 곳부터 열 곳까지 선택할 수 있으며 모든 선택 관측지가 같은 샘플에서 기준 고도 이상일 때 공통 가시로 판정합니다. BURSTT 탭은 Astropy의 지평 좌표를 천정 중심의 방위 등거리 투영으로 변환하여 EW·NS 각도(도)를 표시합니다. 이 각도 좌표는 전파 간섭계의 무차원 방향 코사인 l,m과 구별됩니다. FoV 전체 폭은 기본 60° EW × 90° NS, ID 또는 이름에 LTN이 포함된 관측지는 70° EW × 80° NS입니다. 그래프 커서와 시각 슬라이더가 사이트별 FoV 그림에 동기화되며 사이트별 FoV 구간과 모든 사이트의 공통 FoV 구간이 시간–고도 그래프에 표시됩니다.
 
-`Observing Sites` 탭에서는 관측지 이름, 위도, 경도, 고도를 입력해 최대 50개의 좌표 프로필을 저장하고 기존 프로필을 수정할 수 있습니다. 저장된 관측지 중 계산에 사용할 1–3개를 선택하면 `관측 가시성` 탭과 계산 요청에 즉시 반영됩니다. 선택된 관측지는 선택 순서 번호와 함께 MapLibre GL 기반 OpenFreeMap Positron vector 지도에 표시되고 모든 중복 없는 관측지 쌍의 대권거리를 계산합니다. 이 거리는 고도를 제외한 지표 거리입니다. 기본 세 관측지와 사용자 관측지, 선택 상태는 이 브라우저의 로컬 저장소에 보존되며 기기나 브라우저 사이에서 동기화되지는 않습니다.
+`Observing Sites` 탭에서는 관측지 이름, 위도, 경도, 고도를 입력해 최대 50개의 좌표 프로필을 저장하고 기존 프로필을 수정할 수 있습니다. 저장된 관측지 중 계산에 사용할 1–10개를 선택하면 두 분석 탭과 계산 요청에 즉시 반영됩니다. 선택된 관측지는 선택 순서 번호와 함께 MapLibre GL 기반 OpenFreeMap Positron vector 지도에 표시되고 모든 중복 없는 관측지 쌍의 대권거리를 계산합니다. 이 거리는 고도를 제외한 지표 거리입니다. 기본 세 관측지와 사용자 관측지, 선택 상태는 이 브라우저의 로컬 저장소에 보존되며 기기나 브라우저 사이에서 동기화되지는 않습니다.
 
 지도는 key 없이 OpenFreeMap Positron vector style 한 종류를 사용해 차분한 저채도 배경과 영문·라틴 도시 및 국가 지명 label을 표시합니다. 모든 지명 layer는 `name:en`, `name_en`, `name:latin` 순으로 선택하며 이 값들이 없으면 현지 문자 fallback 대신 label을 생략합니다. zoom 18까지 vector 선과 글자를 현재 화면 해상도로 다시 그리므로 raster overzoom 픽셀화가 없고, Vite 전용 MapLibre worker asset을 명시적으로 연결해 production build에서도 타일 renderer가 시작됩니다. 배경 지도 요청이 실패해도 관측지 pin과 거리선은 제거되지 않으며 선택 변경 시 즉시 다시 그려집니다. 지도 안에는 OpenFreeMap, OpenMapTiles, OpenStreetMap attribution이 표시됩니다. 이 과정에서 브라우저의 IP 주소와 현재 지도 영역에 해당하는 style·vector tile·font 요청이 OpenFreeMap으로 전송될 수 있습니다.
 

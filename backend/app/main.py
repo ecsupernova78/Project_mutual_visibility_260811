@@ -57,7 +57,7 @@ app = FastAPI(
     title="Mutual Visibility API",
     version=__version__,
     description=(
-        "Altitude series for celestial targets observed from one to three locations, "
+        "Altitude series for celestial targets observed from one to ten locations, "
         "with common visibility evaluated across every selected location."
     ),
 )

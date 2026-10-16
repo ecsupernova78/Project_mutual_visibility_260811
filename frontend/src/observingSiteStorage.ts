@@ -1,6 +1,6 @@
 import type { ObserverLocation } from './types'
 
-export const MAXIMUM_SELECTED_SITES = 3
+export const MAXIMUM_SELECTED_SITES = 10
 export const MAXIMUM_SAVED_SITES = 50
 export const OBSERVING_SITE_STORAGE_KEY = 'mutual-sky.observing-sites.v1'
 

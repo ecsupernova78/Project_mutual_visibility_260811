@@ -13,22 +13,30 @@ interface AltitudeChartProps {
   target: VisibilityTarget
   times: string[]
   centerTime: string
+  activeIndex?: number | null
+  onActiveIndexChange?: (index: number | null) => void
+  retainCursorOnLeave?: boolean
+  siteFovMasks?: Array<{ locationId: string; mask: boolean[] }>
+  commonFovMask?: boolean[]
 }
 
 const WIDTH = 1040
 const PLOT_HEIGHT = 344
 const MARGIN = { top: 116, right: 40, bottom: 78, left: 92 }
-const HEIGHT = MARGIN.top + PLOT_HEIGHT + MARGIN.bottom
 const PLOT_WIDTH = WIDTH - MARGIN.left - MARGIN.right
 const Y_MIN = 0
 const Y_MAX = 90
 const Y_TICKS = [0, 15, 30, 45, 60, 75, 90]
 const DETAIL_SITE_COLOR = '#0b7f8c'
 
+function siteFovColor(index: number) {
+  return `hsl(${Math.round((188 + index * 137.508) % 360)} 68% 39%)`
+}
+
 interface DetailLegendEntry {
   key: string
   label: string
-  kind: 'site' | 'reference' | 'window'
+  kind: 'site' | 'reference' | 'window' | 'site-fov' | 'fov'
   locationId?: string
   siteIndex?: number
 }
@@ -87,8 +95,18 @@ export function AltitudeChart({
   target,
   times,
   centerTime,
+  activeIndex: controlledActiveIndex,
+  onActiveIndexChange,
+  retainCursorOnLeave = false,
+  siteFovMasks,
+  commonFovMask,
 }: AltitudeChartProps) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const [localActiveIndex, setLocalActiveIndex] = useState<number | null>(null)
+  const activeIndex = controlledActiveIndex === undefined ? localActiveIndex : controlledActiveIndex
+  const setActiveIndex = (index: number | null) => {
+    if (controlledActiveIndex === undefined) setLocalActiveIndex(index)
+    onActiveIndexChange?.(index)
+  }
   const svgRef = useRef<SVGSVGElement>(null)
   const rawId = useId()
   const patternId = `visible-${rawId.replace(/:/g, '')}`
@@ -111,16 +129,31 @@ export function AltitudeChart({
       label: 'Common visibility window',
       kind: 'window',
     },
+    ...(commonFovMask ? [
+      ...(siteFovMasks ?? []).map(({ locationId }, index) => ({
+        key: `site-fov-${locationId}`,
+        label: `${target.location_series.find((series) => series.location_id === locationId)?.location_name ?? locationId} FoV`,
+        kind: 'site-fov' as const,
+        siteIndex: index,
+      })),
+      {
+        key: 'common-fov-window',
+        label: 'All sites FoV overlap',
+        kind: 'fov' as const,
+      },
+    ] : []),
   ]
   const legendLayout = layoutSvgLegendGrid(legendEntries, {
     startX: MARGIN.left,
     firstBaselineY: 58,
     availableWidth: PLOT_WIDTH,
   })
+  const plotTop = Math.max(MARGIN.top, 58 + Math.max(legendLayout.rowCount - 1, 0) * 26 + 30)
+  const HEIGHT = plotTop + PLOT_HEIGHT + MARGIN.bottom
   const x = (index: number) =>
     MARGIN.left + (pointCount <= 1 ? 0 : (index / (pointCount - 1)) * PLOT_WIDTH)
   const y = (altitude: number) =>
-    MARGIN.top + ((Y_MAX - altitude) / (Y_MAX - Y_MIN)) * PLOT_HEIGHT
+    plotTop + ((Y_MAX - altitude) / (Y_MAX - Y_MIN)) * PLOT_HEIGHT
 
   const paths = target.location_series.map((series) => {
     let drawing = false
@@ -139,14 +172,14 @@ export function AltitudeChart({
   })
 
   const visibleRuns = getVisibleRuns(target.simultaneous_mask.slice(0, pointCount))
+  const commonFovRuns = commonFovMask ? getVisibleRuns(commonFovMask.slice(0, pointCount)) : []
   const xTickIndexes = getTickIndexes(pointCount)
   const centerIndex = nearestTimeIndex(times, centerTime)
 
   const moveToIndex = (clientX: number, element: SVGRectElement) => {
     const bounds = element.getBoundingClientRect()
     if (!bounds.width || pointCount === 0) return
-    const svgX = ((clientX - bounds.left) / bounds.width) * WIDTH
-    const ratio = clamp((svgX - MARGIN.left) / PLOT_WIDTH, 0, 1)
+    const ratio = clamp((clientX - bounds.left) / bounds.width, 0, 1)
     setActiveIndex(Math.round(ratio * Math.max(pointCount - 1, 0)))
   }
 
@@ -165,7 +198,7 @@ export function AltitudeChart({
   const safeActiveIndex = activeIndex === null ? null : clamp(activeIndex, 0, pointCount - 1)
   const activeX = safeActiveIndex === null ? null : x(safeActiveIndex)
   const tooltipX = activeX !== null && activeX > WIDTH - 245 ? activeX - 214 : (activeX ?? 0) + 12
-  const tooltipY = MARGIN.top + 12
+  const tooltipY = plotTop + 12
   const tooltipVisible = safeActiveIndex !== null
 
   return (
@@ -195,7 +228,7 @@ export function AltitudeChart({
             <clipPath id={`${patternId}-clip`}>
               <rect
                 x={MARGIN.left}
-                y={MARGIN.top}
+                y={plotTop}
                 width={PLOT_WIDTH}
                 height={PLOT_HEIGHT}
               />
@@ -264,6 +297,32 @@ export function AltitudeChart({
                       aria-hidden="true"
                     />
                   )}
+                  {entry.kind === 'fov' && (
+                    <rect
+                      x={legendX}
+                      y={legendY - 17}
+                      width="28"
+                      height="15"
+                      fill="#16785f"
+                      fillOpacity=".48"
+                      stroke="#0b5f4b"
+                      strokeWidth="1"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {entry.kind === 'site-fov' && (
+                    <rect
+                      x={legendX}
+                      y={legendY - 17}
+                      width="28"
+                      height="15"
+                      fill={siteFovColor(entry.siteIndex ?? 0)}
+                      fillOpacity=".25"
+                      stroke={siteFovColor(entry.siteIndex ?? 0)}
+                      strokeWidth="1"
+                      aria-hidden="true"
+                    />
+                  )}
                   <text
                     x={legendX + 38}
                     y={legendY}
@@ -299,7 +358,7 @@ export function AltitudeChart({
                 <line
                   x1={x(index)}
                   x2={x(index)}
-                  y1={MARGIN.top}
+                  y1={plotTop}
                   y2={HEIGHT - MARGIN.bottom}
                   className="grid-line vertical"
                 />
@@ -319,11 +378,50 @@ export function AltitudeChart({
                 <rect
                   key={`${start}-${end}`}
                   x={startX}
-                  y={MARGIN.top}
+                  y={plotTop}
                   width={Math.max(endX - startX, 2)}
                   height={PLOT_HEIGHT}
                   fill={`url(#${patternId})`}
                   className="visibility-window"
+                />
+              )
+            })}
+
+            {siteFovMasks?.flatMap(({ locationId, mask }, siteIndex) => (
+              getVisibleRuns(mask.slice(0, pointCount)).map(([start, end]) => {
+                const halfStep = pointCount > 1 ? PLOT_WIDTH / (pointCount - 1) / 2 : 0
+                const startX = Math.max(MARGIN.left, x(start) - halfStep)
+                const endX = Math.min(WIDTH - MARGIN.right, x(end) + halfStep)
+                return (
+                  <rect
+                    key={`site-fov-${locationId}-${start}-${end}`}
+                    x={startX}
+                    y={plotTop}
+                    width={Math.max(endX - startX, 2)}
+                    height={PLOT_HEIGHT}
+                    fill={siteFovColor(siteIndex)}
+                    fillOpacity=".1"
+                    className="site-fov-window"
+                    data-location-id={locationId}
+                  />
+                )
+              })
+            ))}
+
+            {commonFovRuns.map(([start, end]) => {
+              const halfStep = pointCount > 1 ? PLOT_WIDTH / (pointCount - 1) / 2 : 0
+              const startX = Math.max(MARGIN.left, x(start) - halfStep)
+              const endX = Math.min(WIDTH - MARGIN.right, x(end) + halfStep)
+              return (
+                <rect
+                  key={`fov-${start}-${end}`}
+                  x={startX}
+                  y={plotTop}
+                  width={Math.max(endX - startX, 2)}
+                  height={PLOT_HEIGHT}
+                  fill="#16785f"
+                  fillOpacity=".31"
+                  className="common-fov-window"
                 />
               )
             })}
@@ -346,7 +444,7 @@ export function AltitudeChart({
             <line
               x1={x(centerIndex)}
               x2={x(centerIndex)}
-              y1={MARGIN.top}
+              y1={plotTop}
               y2={HEIGHT - MARGIN.bottom}
               className="center-time-line"
             />
@@ -355,7 +453,7 @@ export function AltitudeChart({
               <line
                 x1={activeX}
                 x2={activeX}
-                y1={MARGIN.top}
+                y1={plotTop}
                 y2={HEIGHT - MARGIN.bottom}
                 className="cursor-line"
               />
@@ -364,9 +462,9 @@ export function AltitudeChart({
 
           <text
             x={20}
-            y={MARGIN.top + PLOT_HEIGHT / 2}
+            y={plotTop + PLOT_HEIGHT / 2}
             textAnchor="middle"
-            transform={`rotate(-90 20 ${MARGIN.top + PLOT_HEIGHT / 2})`}
+            transform={`rotate(-90 20 ${plotTop + PLOT_HEIGHT / 2})`}
             className="axis-title"
             fill="#111111"
           >
@@ -424,13 +522,13 @@ export function AltitudeChart({
 
           <rect
             x={MARGIN.left}
-            y={MARGIN.top}
+            y={plotTop}
             width={PLOT_WIDTH}
             height={PLOT_HEIGHT}
             fill="transparent"
             aria-hidden="true"
             onPointerMove={handlePointerMove}
-            onPointerLeave={() => setActiveIndex(null)}
+            onPointerLeave={() => { if (!retainCursorOnLeave) setActiveIndex(null) }}
             className="chart-hit-area"
           />
         </svg>
@@ -446,7 +544,7 @@ export function AltitudeChart({
           value={safeActiveIndex ?? 0}
           aria-label={`${target.name} time (UTC)`}
           aria-valuetext={`${formatUtcTick(times[safeActiveIndex ?? 0], true)} UTC`}
-          onFocus={() => setActiveIndex((current) => current ?? 0)}
+          onFocus={() => setActiveIndex(activeIndex ?? 0)}
           onChange={(event) => setActiveIndex(Number(event.currentTarget.value))}
         />
         <output>{formatUtcTick(times[safeActiveIndex ?? 0], true)} UTC</output>

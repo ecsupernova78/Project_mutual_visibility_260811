@@ -183,8 +183,8 @@ class CustomTarget(ApiModel):
 class VisibilityRequest(ApiModel):
     locations: list[Location] = Field(
         min_length=1,
-        max_length=3,
-        description="One to three observing locations used for the common-visibility calculation.",
+        max_length=10,
+        description="One to ten observing locations used for the common-visibility calculation.",
     )
     center_time_utc: datetime
     hours_before: float = Field(gt=0.0, le=MAX_WINDOW_HOURS)
@@ -193,6 +193,7 @@ class VisibilityRequest(ApiModel):
     minimum_altitude_deg: float = Field(ge=-90.0, le=90.0)
     target_ids: list[str] = Field(default_factory=list, max_length=len(TARGETS_BY_ID))
     custom_targets: list[CustomTarget] = Field(default_factory=list, max_length=MAX_TARGETS_PER_REQUEST)
+    include_fov: bool = False
 
     @field_validator("center_time_utc")
     @classmethod
@@ -270,6 +271,33 @@ class VisibleInterval(ApiModel):
     start_index: int
     end_index: int
     sample_count: int
+
+
+class FovTargetSeries(ApiModel):
+    target_id: str
+    east_west_deg: list[float]
+    north_south_deg: list[float]
+    in_fov: list[bool]
+
+
+class FovSite(ApiModel):
+    location_id: str
+    location_name: str
+    ew_width_deg: float
+    ns_width_deg: float
+    target_series: list[FovTargetSeries]
+
+
+class FovCommonMask(ApiModel):
+    target_id: str
+    in_fov: list[bool]
+
+
+class FovResponse(ApiModel):
+    projection: Literal["zenithal_equidistant"] = "zenithal_equidistant"
+    horizon_radius_deg: float = 90.0
+    sites: list[FovSite]
+    common_masks: list[FovCommonMask]
 
 
 class TargetVisibility(ApiModel):
@@ -631,6 +659,7 @@ class VisibilityResponse(ApiModel):
     targets: list[TargetVisibility]
     visible_target_count: int
     metadata: CalculationMetadata
+    fov: FovResponse | None = None
 
 
 class HealthResponse(ApiModel):

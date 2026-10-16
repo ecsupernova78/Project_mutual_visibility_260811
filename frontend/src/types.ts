@@ -205,6 +205,34 @@ export interface VisibilityRequest {
   minimum_altitude_deg: number
   target_ids: string[]
   custom_targets: CustomTargetSnapshot[]
+  include_fov?: boolean
+}
+
+export interface FovTargetSeries {
+  target_id: string
+  east_west_deg: number[]
+  north_south_deg: number[]
+  in_fov: boolean[]
+}
+
+export interface FovSiteSeries {
+  location_id: string
+  location_name: string
+  ew_width_deg: number
+  ns_width_deg: number
+  target_series: FovTargetSeries[]
+}
+
+export interface FovCommonMask {
+  target_id: string
+  in_fov: boolean[]
+}
+
+export interface VisibilityFov {
+  projection: 'zenithal_equidistant'
+  horizon_radius_deg: number
+  sites: FovSiteSeries[]
+  common_masks: FovCommonMask[]
 }
 
 export interface LocationSeries {
@@ -279,4 +307,5 @@ export interface VisibilityResponse {
   visible_target_count: number
   targets: VisibilityTarget[]
   metadata: CalculationMetadata
+  fov?: VisibilityFov | null
 }

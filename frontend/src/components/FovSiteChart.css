@@ -1,0 +1,44 @@
+.fov-site-chart {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(4, 14, 25, .46);
+}
+
+.fov-chart-frame {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.fov-chart-frame svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+  font-family: var(--mono);
+}
+
+.fov-svg-title { fill: #111827; font-size: 21px; font-weight: 700; }
+.fov-svg-subtitle { fill: #374151; font-size: 16px; }
+.fov-grid line { stroke: #e5e7eb; stroke-width: 1; }
+.fov-grid text { fill: #111827; font-size: 17px; }
+.fov-region { fill: rgba(11, 127, 140, .17); stroke: #0b7f8c; stroke-width: 2.5; }
+.fov-horizon { fill: none; stroke: #4b5563; stroke-width: 2; stroke-dasharray: 7 6; }
+.fov-zenith { fill: #111827; }
+.fov-zenith-label { fill: #111827; font-size: 15px; font-weight: 600; paint-order: stroke fill; stroke: #fff; stroke-width: 3px; }
+.fov-plot-border { fill: none; stroke: #6b7280; stroke-width: 1; }
+.fov-target-marker {
+  font-size: 23px;
+  font-weight: 800;
+  stroke: #fff;
+  stroke-width: 3px;
+  paint-order: stroke fill;
+}
+.fov-clipped-marker-leader { stroke: #111827; stroke-width: 2; stroke-dasharray: 3 2; }
+.fov-clipped-marker-ring { fill: #fff; fill-opacity: .86; stroke: #111827; stroke-width: 1.5; stroke-dasharray: 3 2; }
+.fov-axis-title { fill: #111827; font-size: 20px; font-weight: 600; }
+.fov-legend-status { font-size: 19px; font-weight: 800; }
+.fov-legend-label { fill: #111827; font-size: 15px; }

@@ -1,6 +1,6 @@
 # Mutual Visibility API
 
-선택한 1~3개 관측지와 ICRS 카탈로그 천체를 받아 UTC 시간축의 기하학적 AltAz 고도를 계산하는 FastAPI 서비스입니다. 기본 3C 목록과 ASTRON LoTSS DR3 및 VizieR VLASS 검색 결과의 좌표 snapshot을 함께 처리합니다.
+선택한 1~10개 관측지와 ICRS 카탈로그 천체를 받아 UTC 시간축의 기하학적 AltAz 고도를 계산하는 FastAPI 서비스입니다. 기본 3C 목록과 ASTRON LoTSS DR3 및 VizieR VLASS 검색 결과의 좌표 snapshot을 함께 처리합니다. BURSTT 요청은 관측지별 천정 중심 FoV 투영과 공통 FoV 마스크도 반환합니다.
 
 ## 실행
 
@@ -24,7 +24,7 @@ OpenAPI 문서는 `http://127.0.0.1:8000/docs`에서 볼 수 있습니다.
 - `GET /api/v1/catalogs/vlass/cone`: ICRS 중심 좌표와 반경 안의 VLASS component 조회
 - `POST /api/v1/visibility/altitude-series`: 선택 위치의 시간–고도 계열과 공통 가시 샘플 계산
 
-요청은 서로 다른 ID를 가진 위치 1~3개, 시간창, 샘플 간격, 최소 고도, 기본 대상 ID와 외부 카탈로그 좌표 snapshot을 받습니다. 기본·외부 대상을 합해 최대 25개, 시간축은 최소 2개·최대 2,000개 샘플로 제한하며 알 수 없는 필드·대상, 중복 ID, 범위를 벗어난 좌표를 거부합니다.
+요청은 서로 다른 ID를 가진 위치 1~10개, 시간창, 샘플 간격, 최소 고도, 기본 대상 ID와 외부 카탈로그 좌표 snapshot을 받습니다. 기본·외부 대상을 합해 최대 25개, 시간축은 최소 2개·최대 2,000개 샘플로 제한하며 알 수 없는 필드·대상, 중복 ID, 범위를 벗어난 좌표를 거부합니다.
 
 LoTSS adapter는 서버에 고정된
 `https://vo.astron.nl/__system__/tap/run/tap/async`와 `lotss_dr3.main_sources`만 사용합니다.
@@ -102,7 +102,7 @@ uv run --project backend ruff format --check backend/app backend/tests
 uv run --project backend pytest backend/tests -q
 ```
 
-테스트에는 1~3개 위치 API 검증, 모든 위치 순열 불변성, 위치 추가에 따른 공통 가시성의 단조성,
+테스트에는 1~10개 위치 API 검증, 모든 위치 순열 불변성, 위치 추가에 따른 공통 가시성의 단조성,
 경도 정규화, `references_2026` 기준 시각의 3개 관측지 고도 golden fixture, 외부 좌표 snapshot 계산,
 LoTSS/VLASS 밝기 순·cone ADQL 생성, 형태·품질 코드, TAP/UWS 상태 전이, redirect 검증,
 timeout·중단·삭제, SIMBAD

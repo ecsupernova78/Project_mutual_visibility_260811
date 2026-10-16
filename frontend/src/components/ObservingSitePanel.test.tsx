@@ -135,7 +135,7 @@ describe('ObservingSitePanel', () => {
     })).toHaveFocus())
   })
 
-  it('keeps selected sites removable when the three-site limit is reached', async () => {
+  it('keeps selected sites removable when the configured selection limit is reached', async () => {
     const user = userEvent.setup()
     const props = renderPanel({
       locations: [...DEFAULT_OBSERVING_SITES, customSite],
