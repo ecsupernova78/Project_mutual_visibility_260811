@@ -22,7 +22,17 @@ def test_target_catalog(client: TestClient) -> None:
 
     assert response.status_code == 200
     targets = response.json()["targets"]
-    assert [target["id"] for target in targets] == ["3c123", "3c273", "3c433", "3c295", "3c134"]
+    assert [target["id"] for target in targets] == [
+        "3c123",
+        "3c273",
+        "3c433",
+        "3c295",
+        "3c134",
+        "b0329_54",
+        "crab_pulsar",
+        "3c147",
+        "3c48",
+    ]
     assert targets[0] == {
         "id": "3c123",
         "name": "3C123",
@@ -33,6 +43,22 @@ def test_target_catalog(client: TestClient) -> None:
         "dec_deg": 29.670516667,
         "frame": "icrs",
     }
+    assert [(target["name"], target["ra_hms"], target["dec_dms"]) for target in targets[5:]] == [
+        ("B0329+54 pulsar", "03:32:59.3862", "+54:34:43.505"),
+        ("Crab pulsar", "05:34:31.973", "+22:00:52.06"),
+        ("3C147", "05:42:36.137916", "+49:51:07.23356"),
+        ("3C48", "01:37:41.299431", "+33:09:35.13299"),
+    ]
+
+
+def test_new_example_targets_can_be_calculated(client: TestClient, visibility_payload: dict) -> None:
+    payload = deepcopy(visibility_payload)
+    payload["target_ids"] = ["b0329_54", "crab_pulsar", "3c147", "3c48"]
+
+    response = client.post("/api/v1/visibility/altitude-series", json=payload)
+
+    assert response.status_code == 200
+    assert [target["id"] for target in response.json()["targets"]] == payload["target_ids"]
 
 
 def test_altitude_series_success(client: TestClient, visibility_payload: dict) -> None:

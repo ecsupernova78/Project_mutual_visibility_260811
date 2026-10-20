@@ -56,6 +56,10 @@ const CATALOG_TARGETS: CatalogTarget[] = [
   { id: '3c433', name: '3C433', coordinate: '21h 23m · +25° 04′' },
   { id: '3c295', name: '3C295', coordinate: '14h 11m · +52° 12′' },
   { id: '3c134', name: '3C134', coordinate: '05h 04m · +38° 06′' },
+  { id: 'b0329_54', name: 'B0329+54 pulsar', coordinate: '03h 32m · +54° 34′' },
+  { id: 'crab_pulsar', name: 'Crab pulsar', coordinate: '05h 34m · +22° 00′' },
+  { id: '3c147', name: '3C147', coordinate: '05h 42m · +49° 51′' },
+  { id: '3c48', name: '3C48', coordinate: '01h 37m · +33° 09′' },
 ]
 
 function initialUtcInput() {
@@ -1151,7 +1155,7 @@ export default function App() {
             <fieldset disabled={status === 'loading'}>
               <legend className="section-legend"><span>03</span>Target Selection</legend>
               <div className="target-heading-row">
-                <p>Examples of 5 Radio sources · {selectedTargetIds.size}/{CATALOG_TARGETS.length} selected</p>
+                <p>Examples of Radio sources · {selectedTargetIds.size}/{CATALOG_TARGETS.length} selected</p>
                 <button
                   type="button"
                   className="text-button"
@@ -1176,7 +1180,7 @@ export default function App() {
                   {selectedTargetIds.size === CATALOG_TARGETS.length ? 'Deselect All' : 'Select All'}
                 </button>
               </div>
-              <ul className="target-checks" aria-label="Examples of 5 Radio sources">
+              <ul className="target-checks" aria-label="Examples of Radio sources">
                 {CATALOG_TARGETS.map((target) => (
                   <li key={target.id}>
                     <label className="target-check">

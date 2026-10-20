@@ -83,7 +83,7 @@ const responseBody = {
 }
 
 describe('상호 가시성 인터페이스', () => {
-  it('세 관측지와 다섯 개 카탈로그 천체를 표시한다', () => {
+  it('세 관측지와 아홉 개 카탈로그 천체를 표시한다', () => {
     render(<App />)
     const visibilityPanel = document.querySelector('#visibility-panel') as HTMLElement
     const visibility = within(visibilityPanel)
@@ -104,15 +104,16 @@ describe('상호 가시성 인터페이스', () => {
     expect(screen.queryByText('관측지 C')).not.toBeInTheDocument()
     expect(screen.queryByText('첫 번째 관측 계획')).not.toBeInTheDocument()
     expect(screen.queryByText(/원하는 관측지를 골라/)).not.toBeInTheDocument()
-    expect(visibility.getAllByRole('checkbox')).toHaveLength(8)
+    expect(visibility.getAllByRole('checkbox')).toHaveLength(12)
     expect(screen.getByRole('tab', { name: /Observing Sites/ })).toHaveAttribute(
       'aria-controls',
       'observing-sites-panel',
     )
-    const builtInTargetList = screen.getByRole('list', { name: 'Examples of 5 Radio sources' })
+    const builtInTargetList = screen.getByRole('list', { name: 'Examples of Radio sources' })
     const builtInTargets = within(builtInTargetList).getAllByRole('listitem')
     expect(builtInTargets.map((item) => item.querySelector('b')?.textContent)).toEqual([
       '3C123', '3C273', '3C433', '3C295', '3C134',
+      'B0329+54 pulsar', 'Crab pulsar', '3C147', '3C48',
     ])
     expect(screen.getByLabelText('Include Fushan (Taiwan) in the observation')).not.toBeChecked()
     expect(screen.queryByText(/Elevation defaults to 0 m/)).not.toBeInTheDocument()
@@ -340,7 +341,10 @@ describe('상호 가시성 인터페이스', () => {
       hours_after: 6,
       step_minutes: 15,
       minimum_altitude_deg: 15,
-      target_ids: ['3c123', '3c273', '3c433', '3c295', '3c134'],
+      target_ids: [
+        '3c123', '3c273', '3c433', '3c295', '3c134',
+        'b0329_54', 'crab_pulsar', '3c147', '3c48',
+      ],
       custom_targets: [],
     })
     expect(payload.locations).toEqual([
@@ -548,7 +552,7 @@ describe('상호 가시성 인터페이스', () => {
       target_ids: string[]
       custom_targets: Array<Record<string, unknown>>
     }
-    expect(payload.target_ids).toHaveLength(5)
+    expect(payload.target_ids).toHaveLength(9)
     expect(payload.custom_targets).toEqual([{
       id: source.id,
       name: source.name,
@@ -826,7 +830,7 @@ describe('상호 가시성 인터페이스', () => {
     await user.click(screen.getByRole('button', { name: 'Go to Observation Setup' }))
     expect(screen.getByRole('checkbox', { name: /3C123/ })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Select All' }))
-    expect(screen.getByText(/0\/5 selected/)).toBeInTheDocument()
+    expect(screen.getByText(/0\/9 selected/)).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: /3C123/ })).not.toBeChecked()
   }, 10_000)
 

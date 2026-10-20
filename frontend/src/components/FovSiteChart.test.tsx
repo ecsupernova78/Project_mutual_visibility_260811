@@ -64,17 +64,21 @@ describe('FovSiteChart', () => {
     expect(chart).toHaveTextContent('Zenith')
     expect(chart).toHaveTextContent('LTN: 70\u00b0 EW \u00d7 80\u00b0 NS')
     expect(chart).toHaveTextContent('geometric FoV, not beam response')
-    expect(container.querySelector('.fov-horizon')).toHaveAttribute('r', '180')
+    expect(container.querySelector('.fov-horizon')).toHaveAttribute('r', '270')
     expect(container.querySelector('.fov-region')?.tagName.toLowerCase()).toBe('ellipse')
     expect(container.querySelector('.fov-region')).toHaveAttribute('cx', '258')
     expect(container.querySelector('.fov-region')).toHaveAttribute('cy', '250')
-    expect(container.querySelector('.fov-region')).toHaveAttribute('rx', '70')
-    expect(container.querySelector('.fov-region')).toHaveAttribute('ry', '80')
+    expect(container.querySelector('.fov-region')).toHaveAttribute('rx', '105')
+    expect(container.querySelector('.fov-region')).toHaveAttribute('ry', '120')
+    expect([...container.querySelectorAll('.fov-grid text')].map((label) => label.textContent)).toEqual([
+      '-60', '-40', '-20', '0', '20', '40', '60',
+      '-60', '-40', '-20', '0', '20', '40', '60',
+    ])
     expect(container.querySelectorAll('.fov-zenith-cross')).toHaveLength(2)
     expect(container.querySelector('[data-target-id="3c123"]')).toHaveTextContent('O')
     expect(container.querySelector('[data-target-id="3c123"]')).toHaveAttribute('data-in-fov', 'true')
     expect(container.querySelector('[data-target-id="3c273"]')).toHaveTextContent('X')
-    expect(container.querySelector('[data-target-id="3c273"]')).toHaveAttribute('x', '358')
+    expect(container.querySelector('[data-target-id="3c273"]')).toHaveAttribute('x', '408')
     expect(container.querySelector('[data-target-label="3c123"]')).toHaveTextContent('3C123')
     expect(container.querySelector('[data-target-label="3c273"]')).toHaveTextContent('3C273')
     expect(chart).toHaveTextContent('Below horizon')
@@ -92,33 +96,28 @@ describe('FovSiteChart', () => {
       />,
     )
 
-    expect(container.querySelector('.fov-region')).toHaveAttribute('rx', '60')
-    expect(container.querySelector('.fov-region')).toHaveAttribute('ry', '90')
+    expect(container.querySelector('.fov-region')).toHaveAttribute('rx', '90')
+    expect(container.querySelector('.fov-region')).toHaveAttribute('ry', '135')
     expect(screen.getByText('FUS: 60\u00b0 EW \u00d7 90\u00b0 NS')).toBeInTheDocument()
   })
 
-  it('updates symbols for the timestamp, including below-horizon and off-plot targets', () => {
+  it('updates symbols for the timestamp and omits targets outside the cropped plot', () => {
     const { container, rerender } = render(
       <FovSiteChart site={site} targets={targets} timeIndex={0} timeUtc="2026-08-11T00:00:00Z" />,
     )
     rerender(<FovSiteChart site={site} targets={targets} timeIndex={1} timeUtc="2026-08-11T00:15:00Z" />)
 
     expect(container.querySelector('[data-target-id="3c123"]')).toHaveTextContent('X')
-    expect(container.querySelector('[data-target-id="3c123"]')).toHaveAttribute('x', '338')
-    expect(container.querySelector('[data-target-id="3c273"]')).toHaveTextContent('\u25bc')
-    expect(container.querySelector('[data-target-id="3c273"]')).toHaveAttribute('data-fov-status', 'below')
-    expect(container.querySelector('[data-target-id="3c273"]')).toHaveAttribute('x', '426')
-    expect(container.querySelector('[data-target-id="3c273"]')).toHaveAttribute('data-off-plot', 'true')
-    expect(container.querySelector('[data-target-id="3c273"] title')).toHaveTextContent(
-      'EW 100.0 deg, NS 0.0 deg; at or below the horizon; off plot',
-    )
-    expect(container.querySelector('.fov-clipped-marker-leader')).toHaveAttribute('x2', '438')
-    expect(container.querySelector('.fov-clipped-marker-ring')).toHaveAttribute('cx', '426')
+    expect(container.querySelector('[data-target-id="3c123"]')).toHaveAttribute('x', '378')
+    expect(container.querySelector('[data-target-id="3c273"]')).toBeNull()
+    expect(container.querySelector('[data-target-label="3c273"]')).toBeNull()
     expect(screen.getByText('3C273 (off plot)', { selector: '.fov-legend-label' })).toBeInTheDocument()
+    expect(container.querySelector('.fov-target-legend')).toHaveTextContent('\u25bc')
+    expect(container.querySelectorAll('.fov-legend-label title')[1]).toHaveTextContent('outside the displayed -60 to 60 degree range')
     expect(screen.getByText('2026-08-11 00:15 UTC')).toBeInTheDocument()
   })
 
-  it('places a far off-plot source at the nearest lower-left edge and retains true coordinates', () => {
+  it('does not draw a far off-plot source but retains its true coordinates in the legend', () => {
     const { container } = render(
       <FovSiteChart
         site={{
@@ -136,14 +135,31 @@ describe('FovSiteChart', () => {
       />,
     )
 
-    const marker = container.querySelector('[data-target-id="3c123"]')
-    expect(marker).toHaveTextContent('\u25bc')
-    expect(marker).toHaveAttribute('x', '90')
-    expect(marker).toHaveAttribute('y', '418')
-    expect(marker?.querySelector('title')).toHaveTextContent('EW -120.0 deg, NS -100.0 deg')
-    expect(container.querySelector('.fov-clipped-marker-leader')).toHaveAttribute('x2', '78')
-    expect(container.querySelector('.fov-clipped-marker-leader')).toHaveAttribute('y2', '430')
-    expect(container.querySelector('.fov-legend-label title')).toHaveTextContent('off plot')
+    expect(container.querySelector('[data-target-id="3c123"]')).toBeNull()
+    expect(container.querySelector('[data-target-label="3c123"]')).toBeNull()
+    expect(container.querySelector('.fov-legend-status')).toHaveTextContent('\u25bc')
+    expect(container.querySelector('.fov-legend-label title')).toHaveTextContent('EW -120.0 deg, NS -100.0 deg')
+    expect(container.querySelector('.fov-legend-label title')).toHaveTextContent('outside the displayed -60 to 60 degree range')
+  })
+
+  it('draws points on the 60-degree boundary but hides points just beyond either axis', () => {
+    const boundarySite: FovSite = {
+      ...site,
+      target_series: [
+        { target_id: '3c123', east_west_deg: [60, 60.1], north_south_deg: [0, 0], in_fov: [false, false] },
+        { target_id: '3c273', east_west_deg: [0, 0], north_south_deg: [-60.1, -60], in_fov: [false, false] },
+      ],
+    }
+    const { container, rerender } = render(
+      <FovSiteChart site={boundarySite} targets={targets} timeIndex={0} timeUtc="2026-08-11T00:00:00Z" />,
+    )
+
+    expect(container.querySelector('[data-target-id="3c123"]')).toHaveAttribute('x', '438')
+    expect(container.querySelector('[data-target-id="3c273"]')).toBeNull()
+
+    rerender(<FovSiteChart site={boundarySite} targets={targets} timeIndex={1} timeUtc="2026-08-11T00:15:00Z" />)
+    expect(container.querySelector('[data-target-id="3c123"]')).toBeNull()
+    expect(container.querySelector('[data-target-id="3c273"]')).toHaveAttribute('y', '430')
   })
 
   it('keeps 25 source colors distinct and consistent between site charts', () => {
@@ -189,29 +205,34 @@ describe('FovSiteChart', () => {
 
   it('truncates long names in the legend and plot while retaining the full accessible name', () => {
     const longName = 'ILTJ043704.43+294013.1'
-    const { container } = render(
+    const longSite = {
+      ...site,
+      target_series: [{
+        target_id: 'long-source',
+        east_west_deg: [50, 100],
+        north_south_deg: [0, 0],
+        in_fov: [false, false],
+      }],
+    }
+    const longTargets = [{ ...targets[0], id: 'long-source', name: longName }]
+    const { container, rerender } = render(
       <FovSiteChart
-        site={{
-          ...site,
-          target_series: [{
-            target_id: 'long-source',
-            east_west_deg: [100],
-            north_south_deg: [0],
-            in_fov: [false],
-          }],
-        }}
-        targets={[{ ...targets[0], id: 'long-source', name: longName }]}
+        site={longSite}
+        targets={longTargets}
         timeIndex={0}
         timeUtc="2026-08-11T00:00:00Z"
       />,
     )
+
+    expect(container.querySelector('[data-target-label="long-source"]')).toHaveAttribute('aria-label', longName)
+    expect(container.querySelector('[data-target-label="long-source"]')).toHaveTextContent('ILTJ043704.43+')
+    rerender(<FovSiteChart site={longSite} targets={longTargets} timeIndex={1} timeUtc="2026-08-11T00:15:00Z" />)
 
     const label = container.querySelector('.fov-legend-label')
     const visibleLabel = label?.lastChild?.textContent ?? ''
     expect(visibleLabel.endsWith(' (off plot)')).toBe(true)
     expect(visibleLabel.length).toBeLessThanOrEqual(19)
     expect(label?.querySelector('title')).toHaveTextContent(`${longName}: EW 100.0 deg, NS 0.0 deg`)
-    expect(container.querySelector('[data-target-label="long-source"]')).toHaveAttribute('aria-label', longName)
-    expect(container.querySelector('[data-target-label="long-source"]')).toHaveTextContent('ILTJ043704.43+')
+    expect(container.querySelector('[data-target-label="long-source"]')).toBeNull()
   })
 })

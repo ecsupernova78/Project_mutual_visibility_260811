@@ -44,8 +44,6 @@
   stroke-width: 3px;
   paint-order: stroke fill;
 }
-.fov-clipped-marker-leader { stroke: #111827; stroke-width: 2; stroke-dasharray: 3 2; }
-.fov-clipped-marker-ring { fill: #fff; fill-opacity: .86; stroke: #111827; stroke-width: 1.5; stroke-dasharray: 3 2; }
 .fov-axis-title { fill: #111827; font-size: 18px; font-weight: 500; }
 .fov-symbol-key text { fill: #374151; font-size: 14px; }
 .fov-method-note { fill: #5b6571; font-size: 12px; }
