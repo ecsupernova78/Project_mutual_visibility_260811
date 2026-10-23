@@ -29,6 +29,8 @@
 .fov-horizon { fill: none; stroke: #69727d; stroke-width: 1.5; stroke-dasharray: 4 5; }
 .fov-zenith-cross { stroke: #111827; stroke-width: 2.5; }
 .fov-zenith-label { fill: #111827; font-size: 15px; font-weight: 600; paint-order: stroke fill; stroke: #fff; stroke-width: 3px; }
+.fov-boresight-cross { stroke: #b42318; stroke-width: 2.5; }
+.fov-boresight-label { fill: #b42318; font-size: 15px; font-weight: 700; paint-order: stroke fill; stroke: #fff; stroke-width: 3px; }
 .fov-plot-border { fill: none; stroke: #b8c0c8; stroke-width: 1; }
 .fov-target-marker {
   font-size: 22px;

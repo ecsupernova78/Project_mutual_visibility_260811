@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 
+import { BURSTT_STATIONS, stationCodeForLocation } from '../bursttStations'
 import {
   createObservingSiteId,
   isDefaultObservingSite,
@@ -340,6 +341,8 @@ export function ObservingSitePanel({
               const selected = selectedLocationIds.has(location.id)
               const editing = editingId === location.id
               const pendingDelete = pendingDeleteId === location.id
+              const stationCode = stationCodeForLocation(location)
+              const station = stationCode ? BURSTT_STATIONS[stationCode] : null
               return (
                 <article
                   className={`saved-site-card ${selected ? 'is-selected' : ''}`}
@@ -397,13 +400,23 @@ export function ObservingSitePanel({
                       <div className="saved-site-details">
                         <span>
                           <strong>{location.name}</strong>
-                          <small>{isDefaultObservingSite(location.id) ? 'Preset' : 'Saved'}</small>
+                          <small>{stationCode ?? (isDefaultObservingSite(location.id) ? 'Preset' : 'Saved')}</small>
                         </span>
                         <dl>
                           <div><dt>Lat</dt><dd>{location.latitude_deg.toFixed(5)}°</dd></div>
                           <div><dt>Lon</dt><dd>{location.longitude_deg.toFixed(5)}°</dd></div>
                           <div><dt>Elevation</dt><dd>{location.elevation_m.toLocaleString('en-US')} m</dd></div>
                         </dl>
+                        {station && (
+                          <p className="saved-site-station-meta">
+                            {station.antenna_count} antennas ({station.antenna_rows} × {station.antennas_per_row}) ·
+                            spacing EW {station.spacing_ew_m} m / NS {station.spacing_ns_m} m ·
+                            {station.frequency_min_mhz}–{station.frequency_max_mhz} MHz ·
+                            rotation {station.rotation_deg}°
+                            {stationCode === 'PYC' ? ' · pointing 16° S' : ''}
+                            {stationCode === 'OGW' ? ' · pointing 18° W' : ''}
+                          </p>
+                        )}
                       </div>
                       <div className="site-row-actions">
                         <button

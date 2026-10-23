@@ -12,6 +12,7 @@ from astropy.coordinates import AltAz, EarthLocation, SkyCoord
 from astropy.time import Time
 from astropy.utils import iers
 
+from app.burstt_stations import BURSTT_STATIONS
 from app.catalog import TARGETS_BY_ID
 from app.models import (
     CalculationMetadata,
@@ -37,6 +38,9 @@ iers.conf.iers_degraded_accuracy = "warn"
 def _fov_dimensions(location: Location) -> tuple[float, float]:
     """Return full east-west and north-south widths for the named instrument."""
 
+    if location.burstt_station_code is not None:
+        station = BURSTT_STATIONS[location.burstt_station_code]
+        return station.ew_width_deg, station.ns_width_deg
     if any(
         re.search(r"(?<![A-Za-z0-9])LTN(?![A-Za-z0-9])", value, re.IGNORECASE) for value in (location.id, location.name)
     ):
@@ -50,12 +54,22 @@ def _inside_elliptical_fov(
     north_south_deg: np.ndarray,
     ew_width_deg: float,
     ns_width_deg: float,
+    center_east_west_deg: float = 0.0,
+    center_north_south_deg: float = 0.0,
+    rotation_deg: float = 0.0,
 ) -> np.ndarray:
-    """Test the projected ellipse using its east-west and north-south semi-axes."""
+    """Test a projected ellipse with optional pointing offset and rotation.
 
-    normalized_radius_squared = (east_west_deg / (ew_width_deg / 2.0)) ** 2 + (
-        north_south_deg / (ns_width_deg / 2.0)
-    ) ** 2
+    Positive rotation is counter-clockwise from east toward north in the
+    east-positive/north-positive azimuthal-equidistant projection plane.
+    """
+
+    delta_east_west = east_west_deg - center_east_west_deg
+    delta_north_south = north_south_deg - center_north_south_deg
+    angle = np.deg2rad(rotation_deg)
+    along_ew = delta_east_west * np.cos(angle) + delta_north_south * np.sin(angle)
+    along_ns = -delta_east_west * np.sin(angle) + delta_north_south * np.cos(angle)
+    normalized_radius_squared = (along_ew / (ew_width_deg / 2.0)) ** 2 + (along_ns / (ns_width_deg / 2.0)) ** 2
     return (altitudes_deg >= 0.0) & (normalized_radius_squared <= 1.0)
 
 
@@ -184,12 +198,24 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
     if request.include_fov:
         for location in request.locations:
             ew_width_deg, ns_width_deg = _fov_dimensions(location)
+            station = BURSTT_STATIONS[location.burstt_station_code] if location.burstt_station_code else None
             fov_sites.append(
                 FovSite(
                     location_id=location.id,
                     location_name=location.name,
+                    station_code=location.burstt_station_code,
                     ew_width_deg=ew_width_deg,
                     ns_width_deg=ns_width_deg,
+                    center_east_west_deg=station.center_east_west_deg if station else 0.0,
+                    center_north_south_deg=station.center_north_south_deg if station else 0.0,
+                    rotation_deg=station.rotation_deg if station else 0.0,
+                    antenna_count=station.antenna_count if station else None,
+                    antenna_rows=station.antenna_rows if station else None,
+                    antennas_per_row=station.antennas_per_row if station else None,
+                    spacing_ew_m=station.spacing_ew_m if station else None,
+                    spacing_ns_m=station.spacing_ns_m if station else None,
+                    frequency_min_mhz=station.frequency_min_mhz if station else None,
+                    frequency_max_mhz=station.frequency_max_mhz if station else None,
                     target_series=[],
                 )
             )
@@ -229,6 +255,9 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                     north_south_deg,
                     fov_site.ew_width_deg,
                     fov_site.ns_width_deg,
+                    fov_site.center_east_west_deg,
+                    fov_site.center_north_south_deg,
+                    fov_site.rotation_deg,
                 )
                 fov_mask_arrays.append(in_fov)
                 fov_site.target_series.append(

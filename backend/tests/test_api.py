@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from app.burstt_stations import BURSTT_STATIONS
 from app.visibility import _inside_elliptical_fov
 
 
@@ -162,6 +163,117 @@ def test_elliptical_fov_excludes_rectangle_corners_and_below_horizon() -> None:
     assert inside.tolist() == [True, True, True, False, False]
 
 
+def test_elliptical_fov_pointing_offset_and_counterclockwise_rotation() -> None:
+    # A +90 degree rotation swaps the 30-degree EW and 45-degree NS semi-axes.
+    # The centre is 16 degrees south of the zenith, as for PYC's pointing.
+    inside = _inside_elliptical_fov(
+        np.array([80.0, 50.0, 50.0, -1.0]),
+        np.array([0.0, 40.0, 0.0, 0.0]),
+        np.array([-16.0, -16.0, 24.0, -16.0]),
+        60.0,
+        90.0,
+        center_east_west_deg=0.0,
+        center_north_south_deg=-16.0,
+        rotation_deg=90.0,
+    )
+    assert inside.tolist() == [True, True, False, False]
+
+
+def test_six_burstt_station_profiles_and_fov_masks(client: TestClient, visibility_payload: dict) -> None:
+    surveyed_positions = {
+        "FUS": (24.75649349722, 121.58164468611, 642.341),
+        "LTN": (23.71457841944, 120.82440456389, 882.641),
+        "GRN": (22.67561324167, 121.50121980833, 32.677),
+        "KMN": (24.43977323333, 118.34267574167, 48.568),
+        "OGW": (27.0919857, 142.21690964167, 261.534),
+        "PYC": (37.53410008889, 128.44857061389, 545.067),
+    }
+    expected = {
+        "FUS": (256, 16, 16, 1.0, 0.5, 300, 700, 60, 90, -3.0, 0, 0),
+        "LTN": (64, 4, 16, 1.0, 2.0, 300, 700, 70, 80, 0.5, 0, 0),
+        "GRN": (64, 4, 16, 1.0, 1.0, 400, 800, 60, 90, 1.7, 0, 0),
+        "KMN": (16, 1, 16, 1.0, 1.0, 300, 700, 60, 90, 0.0715, 0, 0),
+        "OGW": (16, 2, 8, 1.0, 1.0, 400, 800, 60, 90, -5.5, -18, 0),
+        "PYC": (16, 1, 16, 1.0, 1.0, 300, 700, 60, 90, -0.23, 0, -16),
+    }
+    payload = deepcopy(visibility_payload)
+    payload.update(
+        {
+            "locations": [
+                {
+                    "id": code.lower(),
+                    "name": code,
+                    "latitude_deg": station.latitude_deg,
+                    "longitude_deg": station.longitude_deg,
+                    "elevation_m": station.elevation_m,
+                    "burstt_station_code": code,
+                }
+                for code, station in BURSTT_STATIONS.items()
+            ],
+            "target_ids": ["3c123"],
+            "hours_before": 1,
+            "hours_after": 1,
+            "step_minutes": 30,
+            "include_fov": True,
+        }
+    )
+
+    response = client.post("/api/v1/visibility/altitude-series", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    fov_sites = body["fov"]["sites"]
+    assert [site["station_code"] for site in fov_sites] == list(expected)
+    for site in fov_sites:
+        code = site["station_code"]
+        station = BURSTT_STATIONS[code]
+        assert (station.latitude_deg, station.longitude_deg, station.elevation_m) == surveyed_positions[code]
+        assert station.antenna_count == station.antenna_rows * station.antennas_per_row
+        assert (
+            site["antenna_count"],
+            site["antenna_rows"],
+            site["antennas_per_row"],
+            site["spacing_ew_m"],
+            site["spacing_ns_m"],
+            site["frequency_min_mhz"],
+            site["frequency_max_mhz"],
+            site["ew_width_deg"],
+            site["ns_width_deg"],
+            site["rotation_deg"],
+            site["center_east_west_deg"],
+            site["center_north_south_deg"],
+        ) == expected[code]
+
+        altitude_series = next(
+            series["altitudes_deg"]
+            for series in body["targets"][0]["location_series"]
+            if series["location_id"] == site["location_id"]
+        )
+        target_series = site["target_series"][0]
+        angle = np.deg2rad(site["rotation_deg"])
+        for altitude, east, north, actual in zip(
+            altitude_series,
+            target_series["east_west_deg"],
+            target_series["north_south_deg"],
+            target_series["in_fov"],
+            strict=True,
+        ):
+            dx = east - site["center_east_west_deg"]
+            dy = north - site["center_north_south_deg"]
+            major = dx * np.cos(angle) + dy * np.sin(angle)
+            minor = -dx * np.sin(angle) + dy * np.cos(angle)
+            expected_inside = altitude >= 0 and (
+                (major / (site["ew_width_deg"] / 2)) ** 2 + (minor / (site["ns_width_deg"] / 2)) ** 2 <= 1
+            )
+            assert actual == expected_inside
+
+
+def test_unknown_burstt_station_code_is_rejected(client: TestClient, visibility_payload: dict) -> None:
+    payload = deepcopy(visibility_payload)
+    payload["locations"][0]["burstt_station_code"] = "NOT_A_STATION"
+    response = client.post("/api/v1/visibility/altitude-series", json=payload)
+    assert response.status_code == 422
+
+
 def test_fov_projection_and_common_mask(
     client: TestClient, visibility_payload: dict, observing_locations: list[dict]
 ) -> None:
@@ -191,6 +303,8 @@ def test_fov_projection_and_common_mask(
     assert fov["projection"] == "zenithal_equidistant"
     assert fov["horizon_radius_deg"] == 90
     assert [(site["ew_width_deg"], site["ns_width_deg"]) for site in fov["sites"]] == [(60, 90), (70, 80)]
+    assert [site["station_code"] for site in fov["sites"]] == [None, None]
+    assert all(site["center_east_west_deg"] == 0 and site["center_north_south_deg"] == 0 for site in fov["sites"])
 
     for site, location in zip(fov["sites"], body["locations"], strict=True):
         assert site["location_id"] == location["id"]

@@ -43,8 +43,8 @@ describe('observing-site geometry', () => {
       'fushan-pyeongchang',
       'narrabri-pyeongchang',
     ])
-    expect(pairs[0].distanceKm).toBeCloseTo(6820.937, 3)
-    expect(pairs[1].distanceKm).toBeCloseTo(1543.933, 3)
+    expect(pairs[0].distanceKm).toBeCloseTo(6820.938, 3)
+    expect(pairs[1].distanceKm).toBeCloseTo(1543.931, 3)
     expect(pairs[2].distanceKm).toBeCloseTo(7848.135, 3)
   })
 })

@@ -79,6 +79,8 @@ SIMBAD_TYPE_CATEGORY_ORDER: tuple[SimbadTypeCategory, ...] = (
     "radio_source",
 )
 
+BursttStationCode = Literal["FUS", "LTN", "GRN", "KMN", "OGW", "PYC"]
+
 
 class ApiModel(BaseModel):
     """Shared strict model configuration for a predictable frontend contract."""
@@ -96,6 +98,7 @@ class Location(ApiModel):
         description="East-positive geodetic longitude in the canonical [-180, 180) range.",
     )
     elevation_m: float = Field(ge=-500.0, le=10_000.0)
+    burstt_station_code: BursttStationCode | None = None
 
     @field_validator("longitude_deg", mode="before")
     @classmethod
@@ -283,8 +286,19 @@ class FovTargetSeries(ApiModel):
 class FovSite(ApiModel):
     location_id: str
     location_name: str
+    station_code: BursttStationCode | None = None
     ew_width_deg: float
     ns_width_deg: float
+    center_east_west_deg: float = 0.0
+    center_north_south_deg: float = 0.0
+    rotation_deg: float = 0.0
+    antenna_count: int | None = None
+    antenna_rows: int | None = None
+    antennas_per_row: int | None = None
+    spacing_ew_m: float | None = None
+    spacing_ns_m: float | None = None
+    frequency_min_mhz: float | None = None
+    frequency_max_mhz: float | None = None
     target_series: list[FovTargetSeries]
 
 

@@ -21,10 +21,14 @@ function memoryStorage(initial: string | null = null) {
 }
 
 describe('observing-site storage', () => {
-  it('uses the three presets and two selected sites when no saved state exists', () => {
+  it('uses the BURSTT presets and two selected sites when no saved state exists', () => {
     const state = loadObservingSiteState(memoryStorage())
 
     expect(state.locations).toEqual(DEFAULT_OBSERVING_SITES)
+    expect(state.locations).toHaveLength(8)
+    expect(state.locations.map((site) => site.burstt_station_code).filter(Boolean)).toEqual([
+      'FUS', 'LTN', 'GRN', 'KMN', 'OGW', 'PYC',
+    ])
     expect([...state.selectedLocationIds]).toEqual(['narrabri', 'pyeongchang'])
     expect(state.storageStatus).toBe('missing')
   })
@@ -133,7 +137,7 @@ describe('observing-site storage', () => {
     expect(state.locations[0]).not.toHaveProperty('unexpected')
   })
 
-  it('rejects a stored custom-site set that exceeds the cap after presets are restored', () => {
+  it('preserves a full stored site library when there is no room for new presets', () => {
     const customLocations = Array.from({ length: 50 }, (_, index) => ({
       id: `site-${index}`,
       name: `Custom Site ${index}`,
@@ -147,9 +151,39 @@ describe('observing-site storage', () => {
       selected_location_ids: [],
     })))
 
-    expect(state.storageStatus).toBe('invalid')
-    expect(state.locations).toEqual(DEFAULT_OBSERVING_SITES)
-    expect(state.locations).toHaveLength(3)
+    expect(state.storageStatus).toBe('valid')
+    expect(state.locations).toEqual(customLocations)
+    expect(state.locations).toHaveLength(50)
+  })
+
+  it('migrates recognized legacy BURSTT profiles without adding duplicate presets', () => {
+    const oldFushan = {
+      id: 'fushan', name: 'Fushan (Taiwan)', latitude_deg: 24.7564722222,
+      longitude_deg: 121.5816388889, elevation_m: 0,
+    }
+    const oldLongtien = {
+      id: 'site-ltn', name: 'LTN', latitude_deg: 23.7145,
+      longitude_deg: 120.8244, elevation_m: 800,
+    }
+    const oldGreenIsland = {
+      id: 'site-grn', name: 'GRN', latitude_deg: 22.6756,
+      longitude_deg: 121.5012, elevation_m: 30,
+    }
+    const state = loadObservingSiteState(memoryStorage(JSON.stringify({
+      version: 1,
+      locations: [DEFAULT_OBSERVING_SITES[0], DEFAULT_OBSERVING_SITES[1], oldFushan, oldLongtien, oldGreenIsland],
+      selected_location_ids: ['site-ltn', 'site-grn', 'fushan'],
+    })))
+
+    expect(state.locations.filter((site) => site.burstt_station_code === 'LTN')).toHaveLength(1)
+    expect(state.locations.filter((site) => site.burstt_station_code === 'GRN')).toHaveLength(1)
+    expect(state.locations.find((site) => site.id === 'fushan')).toMatchObject({
+      elevation_m: 642.341, burstt_station_code: 'FUS',
+    })
+    expect(state.locations.find((site) => site.id === 'site-ltn')).toMatchObject({
+      elevation_m: 882.641, burstt_station_code: 'LTN',
+    })
+    expect([...state.selectedLocationIds]).toEqual(['site-ltn', 'site-grn', 'fushan'])
   })
 
   it('round-trips valid state and refuses to overwrite storage with invalid drafts', () => {

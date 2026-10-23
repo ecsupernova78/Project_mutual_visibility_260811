@@ -101,6 +101,52 @@ describe('FovSiteChart', () => {
     expect(screen.getByText('FUS: 60\u00b0 EW \u00d7 90\u00b0 NS')).toBeInTheDocument()
   })
 
+  it('draws tilted station boresights and rotates the nominal footprint', () => {
+    const { container, rerender } = render(
+      <FovSiteChart
+        site={{
+          ...site,
+          station_code: 'OGW',
+          location_name: 'Ogasawara (Japan)',
+          ew_width_deg: 60,
+          ns_width_deg: 90,
+          center_east_west_deg: -18,
+          center_north_south_deg: 0,
+          rotation_deg: -5.5,
+          antenna_count: 16,
+          antenna_rows: 2,
+          antennas_per_row: 8,
+          spacing_ew_m: 1,
+          spacing_ns_m: 1,
+          frequency_min_mhz: 400,
+          frequency_max_mhz: 800,
+        }}
+        targets={targets}
+        timeIndex={0}
+        timeUtc="2026-08-11T00:00:00Z"
+      />,
+    )
+    expect(container.querySelector('.fov-region')).toHaveAttribute('cx', '204')
+    expect(container.querySelector('.fov-region')).toHaveAttribute('cy', '250')
+    expect(container.querySelector('.fov-region')).toHaveAttribute('transform', 'rotate(5.5 204 250)')
+    expect(screen.getByText('Boresight', { selector: '.fov-boresight-label' })).toBeInTheDocument()
+    expect(container.querySelector('[aria-label="Boresight 18° W"]')).toBeInTheDocument()
+    expect(screen.getByText(/16 antennas \(2 × 8\)/)).toBeInTheDocument()
+
+    rerender(
+      <FovSiteChart
+        site={{ ...site, station_code: 'PYC', center_east_west_deg: 0, center_north_south_deg: -16, rotation_deg: -0.23 }}
+        targets={targets}
+        timeIndex={0}
+        timeUtc="2026-08-11T00:00:00Z"
+      />,
+    )
+    expect(container.querySelector('.fov-region')).toHaveAttribute('cx', '258')
+    expect(container.querySelector('.fov-region')).toHaveAttribute('cy', '298')
+    expect(container.querySelector('.fov-region')).toHaveAttribute('transform', 'rotate(0.23 258 298)')
+    expect(container.querySelector('[aria-label="Boresight 16° S"]')).toBeInTheDocument()
+  })
+
   it('updates symbols for the timestamp and omits targets outside the cropped plot', () => {
     const { container, rerender } = render(
       <FovSiteChart site={site} targets={targets} timeIndex={0} timeUtc="2026-08-11T00:00:00Z" />,

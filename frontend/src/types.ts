@@ -1,9 +1,12 @@
+import type { BursttStationCode } from './bursttStations'
+
 export interface ObserverLocation {
   id: string
   name: string
   latitude_deg: number
   longitude_deg: number
   elevation_m: number
+  burstt_station_code?: BursttStationCode
 }
 
 export type CatalogName = 'lofar_dr3' | 'vlass'
@@ -220,6 +223,17 @@ export interface FovSiteSeries {
   location_name: string
   ew_width_deg: number
   ns_width_deg: number
+  station_code?: BursttStationCode | null
+  center_east_west_deg?: number
+  center_north_south_deg?: number
+  rotation_deg?: number
+  antenna_count?: number | null
+  antenna_rows?: number | null
+  antennas_per_row?: number | null
+  spacing_ew_m?: number | null
+  spacing_ns_m?: number | null
+  frequency_min_mhz?: number | null
+  frequency_max_mhz?: number | null
   target_series: FovTargetSeries[]
 }
 

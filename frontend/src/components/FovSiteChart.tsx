@@ -16,6 +16,17 @@ export interface FovSite {
   location_name: string
   ew_width_deg: number
   ns_width_deg: number
+  station_code?: string | null
+  center_east_west_deg?: number
+  center_north_south_deg?: number
+  rotation_deg?: number
+  antenna_count?: number | null
+  antenna_rows?: number | null
+  antennas_per_row?: number | null
+  spacing_ew_m?: number | null
+  spacing_ns_m?: number | null
+  frequency_min_mhz?: number | null
+  frequency_max_mhz?: number | null
   target_series: FovTargetSeries[]
 }
 
@@ -38,7 +49,7 @@ const PLOT_CENTER_Y = PLOT_TOP + PLOT_SIZE / 2
 const DEGREES_PER_HALF_PLOT = 60
 const PIXELS_PER_DEGREE = PLOT_SIZE / (2 * DEGREES_PER_HALF_PLOT)
 const TICKS = [-60, -40, -20, 0, 20, 40, 60]
-const LEGEND_TOP = 574
+const LEGEND_TOP = 624
 const LEGEND_ROW_HEIGHT = 25
 const LEGEND_COLUMNS = 2
 const LEGEND_MAX_CHARACTERS = 19
@@ -95,6 +106,14 @@ function plotName(name: string) {
   return name.length > 18 ? `${name.slice(0, 15)}...` : name
 }
 
+function pointingLabel(eastWest: number, northSouth: number) {
+  if (eastWest === 0 && northSouth === 0) return 'Zenith'
+  const parts = []
+  if (eastWest !== 0) parts.push(`${Math.abs(eastWest)}° ${eastWest > 0 ? 'E' : 'W'}`)
+  if (northSouth !== 0) parts.push(`${Math.abs(northSouth)}° ${northSouth > 0 ? 'N' : 'S'}`)
+  return parts.join(', ')
+}
+
 export function FovSiteChart({
   site,
   targets,
@@ -146,6 +165,12 @@ export function FovSiteChart({
   const viewHeight = LEGEND_TOP + Math.max(legendRows, 1) * LEGEND_ROW_HEIGHT + 20
   const fovRadiusX = Math.max(0, Math.min(site.ew_width_deg, 180)) * PIXELS_PER_DEGREE / 2
   const fovRadiusY = Math.max(0, Math.min(site.ns_width_deg, 180)) * PIXELS_PER_DEGREE / 2
+  const centerEastWest = site.center_east_west_deg ?? 0
+  const centerNorthSouth = site.center_north_south_deg ?? 0
+  const rotation = site.rotation_deg ?? 0
+  const beamCenterX = plotX(centerEastWest)
+  const beamCenterY = plotY(centerNorthSouth)
+  const tilted = centerEastWest !== 0 || centerNorthSouth !== 0
   const exportLabel = `${site.location_name} field of view plot`
 
   return (
@@ -164,11 +189,13 @@ export function FovSiteChart({
         >
           <title id={titleId}>{site.location_name} field of view</title>
           <desc id={descriptionId}>
-            Zenith-centered azimuthal equidistant sky projection at {formatUtc(timeUtc)}.
+            Azimuthal equidistant sky projection at {formatUtc(timeUtc)}.
             East-West and North-South offsets range from -60 to 60 degrees. The horizon
             lies outside this cropped view; the shaded ellipse marks the geometric
-            {site.ew_width_deg} by {site.ns_width_deg} degree field of view, not a
-            beam sensitivity response. O means inside the field of view,
+            {site.ew_width_deg} by {site.ns_width_deg} degree nominal field of view,
+            centered {pointingLabel(centerEastWest, centerNorthSouth)} with rotation {rotation}
+            degrees counterclockwise from East toward North. This is not a measured beam
+            sensitivity response. O means inside the field of view,
             X means above the horizon but outside, and the downward triangle means at
             or below the horizon. Sources outside the plotted square have no plotted
             marker or name, but remain listed in the status legend.
@@ -181,7 +208,7 @@ export function FovSiteChart({
           </defs>
 
           <text className="fov-svg-title" x={PLOT_CENTER_X} y="31">
-            {`${site.location_name}: ${site.ew_width_deg}\u00b0 EW \u00d7 ${site.ns_width_deg}\u00b0 NS`}
+            {`${site.station_code ?? site.location_name}: ${site.ew_width_deg}\u00b0 EW \u00d7 ${site.ns_width_deg}\u00b0 NS`}
           </text>
           <text className="fov-svg-subtitle" x={PLOT_CENTER_X} y="52">{formatUtc(timeUtc)}</text>
 
@@ -203,10 +230,11 @@ export function FovSiteChart({
           <g clipPath={`url(#${clipId})`}>
             <ellipse
               className="fov-region"
-              cx={PLOT_CENTER_X}
-              cy={PLOT_CENTER_Y}
+              cx={beamCenterX}
+              cy={beamCenterY}
               rx={fovRadiusX}
               ry={fovRadiusY}
+              transform={`rotate(${-rotation} ${beamCenterX} ${beamCenterY})`}
             />
             <circle
               className="fov-horizon"
@@ -216,6 +244,13 @@ export function FovSiteChart({
             />
             <line className="fov-zenith-cross" x1={PLOT_CENTER_X - 8} x2={PLOT_CENTER_X + 8} y1={PLOT_CENTER_Y} y2={PLOT_CENTER_Y} />
             <line className="fov-zenith-cross" x1={PLOT_CENTER_X} x2={PLOT_CENTER_X} y1={PLOT_CENTER_Y - 8} y2={PLOT_CENTER_Y + 8} />
+            {tilted && (
+              <g aria-label={`Boresight ${pointingLabel(centerEastWest, centerNorthSouth)}`}>
+                <line className="fov-boresight-cross" x1={beamCenterX - 7} x2={beamCenterX + 7} y1={beamCenterY} y2={beamCenterY} />
+                <line className="fov-boresight-cross" x1={beamCenterX} x2={beamCenterX} y1={beamCenterY - 7} y2={beamCenterY + 7} />
+                <text className="fov-boresight-label" x={beamCenterX + 12} y={beamCenterY - 12}>Boresight</text>
+              </g>
+            )}
             {markers.filter((marker) => marker.insidePlot).map((marker) => {
               const markerX = plotX(marker.eastWest)
               const markerY = plotY(marker.northSouth)
@@ -275,8 +310,18 @@ export function FovSiteChart({
             <text x={PLOT_LEFT + 283} y="518">{'\u25bc  Below horizon'}</text>
           </g>
           <text className="fov-method-note" x={PLOT_CENTER_X} y="548" textAnchor="middle">
-            Azimuthal equidistant · geometric FoV, not beam response
+            Azimuthal equidistant · nominal geometric FoV, not beam response
           </text>
+          <text className="fov-method-note" x={PLOT_CENTER_X} y="568" textAnchor="middle">
+            Boresight {pointingLabel(centerEastWest, centerNorthSouth)} · rotation {rotation}° CCW
+          </text>
+          {site.antenna_count != null && (
+            <text className="fov-method-note" x={PLOT_CENTER_X} y="588" textAnchor="middle">
+              {site.antenna_count} antennas ({site.antenna_rows} × {site.antennas_per_row}) ·
+              spacing {site.spacing_ew_m}/{site.spacing_ns_m} m EW/NS ·
+              {site.frequency_min_mhz}–{site.frequency_max_mhz} MHz
+            </text>
+          )}
 
           <g className="fov-target-legend" aria-label="Target field of view status">
             {markers.map((marker, index) => {

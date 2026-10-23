@@ -1,6 +1,6 @@
 # Mutual Visibility API
 
-선택한 1~10개 관측지와 ICRS 카탈로그 천체를 받아 UTC 시간축의 기하학적 AltAz 고도를 계산하는 FastAPI 서비스입니다. 기본 전파원 예시 9개(3C 7개와 펄서 2개)와 ASTRON LoTSS DR3 및 VizieR VLASS 검색 결과의 좌표 snapshot을 함께 처리합니다. BURSTT 요청은 관측지별 천정 중심의 타원형 FoV 투영과 공통 FoV 마스크도 반환합니다.
+선택한 1~10개 관측지와 ICRS 카탈로그 천체를 받아 UTC 시간축의 기하학적 AltAz 고도를 계산하는 FastAPI 서비스입니다. 기본 전파원 예시 9개(3C 7개와 펄서 2개)와 ASTRON LoTSS DR3 및 VizieR VLASS 검색 결과의 좌표 snapshot을 함께 처리합니다. BURSTT 요청은 관측지별 타원형 FoV 투영과 공통 FoV 마스크도 반환합니다.
 
 ## 실행
 
@@ -80,6 +80,8 @@ SIMBAD TAP에서 선호 별칭과 유형 설명을 보강합니다. `crossmatch_
 ## 과학적 경계
 
 좌표는 ICRS에서 AltAz로 변환하고 동쪽 경도를 양수로 사용합니다. 고도는 대기 굴절을 적용하지 않은 기하학적 값입니다. `simultaneous_mask`는 모든 선택 위치의 고도가 같은 샘플에서 임계값 이상인지 나타내며, `visible_intervals`는 연속된 참 샘플을 묶은 결과입니다. 한 곳만 선택하면 그 관측지의 가시성과 같습니다.
+
+`include_fov=true`일 때 관측지에 `burstt_station_code`를 지정하면 FUS/LTN/GRN/KMN/OGW/PYC의 저장된 안테나 배열·간격·주파수 범위와 회전각을 적용합니다. `FovSite` 응답에는 이 메타데이터와 FoV 중심 EW/NS 좌표가 포함됩니다. PYC 중심은 천정에서 남쪽 16°, OGW 중심은 서쪽 18°입니다. 회전각의 양수 방향은 EW(동쪽 양수)–NS(북쪽 양수) 투영 평면의 반시계 방향입니다. 회전 및 중심 이동은 천정 방위 등거리 투영면에서 타원으로 근사합니다. 크기는 FUS/GRN/KMN/OGW/PYC 60° EW × 90° NS, LTN 70° EW × 80° NS의 기존 명목상 FoV이며 실측 빔 응답이나 안테나 배열에서 계산한 합성 빔 폭이 아닙니다. 정확한 빔을 계산하려면 관측 주파수, 안테나 소자 패턴, 가중치 및 빔 지향 방식이 더 필요합니다. `burstt_station_code`가 없는 일반 관측지는 기존 천정 중심 FoV를 유지합니다. 관측지의 위도·경도·고도는 요청값을 사용하므로, 지정한 station code와 그 좌표가 일치하도록 클라이언트가 전송해야 합니다.
 
 요청 처리 중 IERS 네트워크 다운로드는 비활성화되어 있습니다. 현재 결과에는 밝기, 낮/밤, 달, 날씨, 지형, 장비 제한이 포함되지 않습니다.
 

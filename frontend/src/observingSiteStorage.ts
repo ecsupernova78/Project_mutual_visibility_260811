@@ -1,4 +1,5 @@
 import type { ObserverLocation } from './types'
+import { BURSTT_STATIONS, isBursttStationCode, stationCodeForLocation } from './bursttStations'
 
 export const MAXIMUM_SELECTED_SITES = 10
 export const MAXIMUM_SAVED_SITES = 50
@@ -21,11 +22,20 @@ export const DEFAULT_OBSERVING_SITES: ObserverLocation[] = [
   },
   {
     id: 'fushan',
-    name: 'Fushan (Taiwan)',
-    latitude_deg: 24.7564722222,
-    longitude_deg: 121.5816388889,
-    elevation_m: 0,
+    name: BURSTT_STATIONS.FUS.name,
+    latitude_deg: BURSTT_STATIONS.FUS.latitude_deg,
+    longitude_deg: BURSTT_STATIONS.FUS.longitude_deg,
+    elevation_m: BURSTT_STATIONS.FUS.elevation_m,
+    burstt_station_code: 'FUS',
   },
+  ...(['LTN', 'GRN', 'KMN', 'OGW', 'PYC'] as const).map((code) => ({
+    id: `burstt-${code.toLowerCase()}`,
+    name: BURSTT_STATIONS[code].name,
+    latitude_deg: BURSTT_STATIONS[code].latitude_deg,
+    longitude_deg: BURSTT_STATIONS[code].longitude_deg,
+    elevation_m: BURSTT_STATIONS[code].elevation_m,
+    burstt_station_code: code,
+  })),
 ]
 
 export const DEFAULT_SELECTED_SITE_IDS = ['narrabri', 'pyeongchang']
@@ -68,16 +78,23 @@ function isObserverLocation(value: unknown): value is ObserverLocation {
     && isFiniteNumber(candidate.elevation_m)
     && candidate.elevation_m >= -500
     && candidate.elevation_m <= 10_000
+    && (candidate.burstt_station_code === undefined || isBursttStationCode(candidate.burstt_station_code))
   )
 }
 
 function normalizedLocation(location: ObserverLocation): ObserverLocation {
+  const stationCode = stationCodeForLocation(location)
+  // A stored site without a station code predates this station registry. Only
+  // recognizable BURSTT sites are migrated to the surveyed JSON coordinates;
+  // subsequent user edits retain their values because they carry the code.
+  const surveyed = stationCode && !location.burstt_station_code ? BURSTT_STATIONS[stationCode] : null
   return {
     id: location.id,
     name: location.name.trim(),
-    latitude_deg: location.latitude_deg,
-    longitude_deg: location.longitude_deg === 180 ? -180 : location.longitude_deg,
-    elevation_m: location.elevation_m,
+    latitude_deg: surveyed?.latitude_deg ?? location.latitude_deg,
+    longitude_deg: surveyed?.longitude_deg ?? (location.longitude_deg === 180 ? -180 : location.longitude_deg),
+    elevation_m: surveyed?.elevation_m ?? location.elevation_m,
+    ...(stationCode ? { burstt_station_code: stationCode } : {}),
   }
 }
 
@@ -118,15 +135,25 @@ export function loadObservingSiteState(storage?: Pick<Storage, 'getItem'>): Obse
       locationsById.set(location.id, normalizedLocation(location))
     }
 
+    const storedLocations = [...locationsById.values()]
+    const storedStationCodes = new Set(storedLocations.map(stationCodeForLocation))
+    const storedDefaultIds = new Set(DEFAULT_OBSERVING_SITES.map((location) => location.id))
+    const storedDefaults = DEFAULT_OBSERVING_SITES.flatMap((location) => {
+      const stored = locationsById.get(location.id)
+      return stored ? [stored] : []
+    })
+    const customLocations = storedLocations.filter((location) => !storedDefaultIds.has(location.id))
+    const missingDefaults = DEFAULT_OBSERVING_SITES.filter((location) => (
+      !locationsById.has(location.id)
+      && (!location.burstt_station_code || !storedStationCodes.has(location.burstt_station_code))
+    ))
+    // Keep all pre-existing profiles when new presets would exceed the cap.
+    const spaceForPresets = Math.max(0, MAXIMUM_SAVED_SITES - storedLocations.length)
     const locations = [
-      ...DEFAULT_OBSERVING_SITES.map((defaultLocation) => (
-        locationsById.get(defaultLocation.id) ?? { ...defaultLocation }
-      )),
-      ...[...locationsById.values()].filter((location) => (
-        !DEFAULT_OBSERVING_SITES.some((defaultLocation) => defaultLocation.id === location.id)
-      )),
+      ...storedDefaults,
+      ...missingDefaults.slice(0, spaceForPresets).map((location) => ({ ...location })),
+      ...customLocations,
     ]
-    if (locations.length > MAXIMUM_SAVED_SITES) return defaultState('invalid')
 
     const availableIds = new Set(locations.map((location) => location.id))
     const selectedLocationIds = new Set(

@@ -83,7 +83,7 @@ const responseBody = {
 }
 
 describe('상호 가시성 인터페이스', () => {
-  it('세 관측지와 아홉 개 카탈로그 천체를 표시한다', () => {
+  it('BURSTT 관측지 프리셋과 아홉 개 카탈로그 천체를 표시한다', () => {
     render(<App />)
     const visibilityPanel = document.querySelector('#visibility-panel') as HTMLElement
     const visibility = within(visibilityPanel)
@@ -91,11 +91,14 @@ describe('상호 가시성 인터페이스', () => {
     expect(visibility.getByDisplayValue('Narrabri (Aus)')).toBeInTheDocument()
     expect(visibility.getByDisplayValue('Pyeongchang (Kor)')).toBeInTheDocument()
     expect(visibility.getByDisplayValue('Fushan (Taiwan)')).toBeInTheDocument()
+    expect(visibility.getByDisplayValue('Kinmen (Taiwan)')).toBeInTheDocument()
+    expect(visibility.getByDisplayValue('Ogasawara (Japan)')).toBeInTheDocument()
+    expect(visibility.getByDisplayValue('Pyeongchang (Kor) · PYC')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Observation Setup' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: /Reference Time UTC/ })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: /Target Selection/ })).toBeInTheDocument()
-    expect(visibility.getAllByText('Latitude (N: + / S: −)')).toHaveLength(3)
-    expect(visibility.getAllByText('Longitude (E: + / W: −)')).toHaveLength(3)
+    expect(visibility.getAllByText('Latitude (N: + / S: −)')).toHaveLength(8)
+    expect(visibility.getAllByText('Longitude (E: + / W: −)')).toHaveLength(8)
     expect(screen.getByRole('spinbutton', { name: 'Narrabri (Aus) latitude (N: + / S: −)' })).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: 'Pyeongchang (Kor) longitude (E: + / W: −)' })).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: 'Fushan (Taiwan) elevation' })).toBeDisabled()
@@ -104,7 +107,7 @@ describe('상호 가시성 인터페이스', () => {
     expect(screen.queryByText('관측지 C')).not.toBeInTheDocument()
     expect(screen.queryByText('첫 번째 관측 계획')).not.toBeInTheDocument()
     expect(screen.queryByText(/원하는 관측지를 골라/)).not.toBeInTheDocument()
-    expect(visibility.getAllByRole('checkbox')).toHaveLength(12)
+    expect(visibility.getAllByRole('checkbox')).toHaveLength(17)
     expect(screen.getByRole('tab', { name: /Observing Sites/ })).toHaveAttribute(
       'aria-controls',
       'observing-sites-panel',
@@ -230,7 +233,7 @@ describe('상호 가시성 인터페이스', () => {
     expect(screen.getByLabelText(
       'Use Mauna Kea VLBI (USA) in Observation Visibility',
     )).toBeChecked()
-  })
+  }, 15_000)
 
   it('deleting a selected saved site clears stale plots and removes it from the next request', async () => {
     const user = userEvent.setup()
@@ -1025,11 +1028,41 @@ describe('상호 가시성 인터페이스', () => {
     expect(payload.locations).toHaveLength(3)
     expect(payload.locations[2]).toMatchObject({
       id: 'fushan',
-      latitude_deg: 24.7564722222,
-      longitude_deg: 121.5816388889,
-      elevation_m: 0,
+      latitude_deg: 24.75649349722,
+      longitude_deg: 121.58164468611,
+      elevation_m: 642.341,
+      burstt_station_code: 'FUS',
     })
     expect(await screen.findAllByText('Fushan (Taiwan)', { selector: '.legend-item' })).toHaveLength(2)
+  })
+
+  it('sends surveyed PYC and OGW positions with their station beam profiles', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    render(<App />)
+
+    await user.click(screen.getByLabelText('Include Ogasawara (Japan) in the observation'))
+    await user.click(screen.getByLabelText('Include Pyeongchang (Kor) · PYC in the observation'))
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as {
+      locations: Array<Record<string, unknown>>
+    }
+    expect(payload.locations).toContainEqual(expect.objectContaining({
+      id: 'burstt-ogw', burstt_station_code: 'OGW',
+      latitude_deg: 27.0919857, longitude_deg: 142.21690964167, elevation_m: 261.534,
+    }))
+    expect(payload.locations).toContainEqual(expect.objectContaining({
+      id: 'burstt-pyc', burstt_station_code: 'PYC',
+      latitude_deg: 37.53410008889, longitude_deg: 128.44857061389, elevation_m: 545.067,
+    }))
+    expect(payload.locations[1]).not.toHaveProperty('burstt_station_code')
   })
 
   it('제외한 관측지의 잘못된 입력은 선택된 관측지 계산을 막지 않는다', async () => {

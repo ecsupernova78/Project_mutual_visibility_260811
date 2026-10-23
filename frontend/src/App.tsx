@@ -8,6 +8,7 @@ import {
 } from 'react'
 
 import { calculateVisibility } from './api'
+import { stationCodeForLocation } from './bursttStations'
 import { AltitudeChart } from './components/AltitudeChart'
 import { CatalogPanel } from './components/CatalogPanel'
 import { FovSiteChart } from './components/FovSiteChart'
@@ -242,6 +243,9 @@ function LocationEditor({
               onChange={(event) => onChange({ ...location, name: event.currentTarget.value })}
             />
           </label>
+          {stationCodeForLocation(location) && (
+            <small className="burstt-station-tag">BURSTT · {stationCodeForLocation(location)}</small>
+          )}
         </div>
         <label className="location-toggle">
           <input
@@ -289,7 +293,7 @@ function LocationEditor({
           value={location.elevation_m}
           min={-500}
           max={10000}
-          step={1}
+          step="any"
           suffix="m"
           required={selected}
           disabled={!selected}
@@ -749,7 +753,7 @@ export default function App() {
     invalidateResults()
     setSiteStateRevision((current) => current + 1)
     setLocations((current) => current.map((location) => (
-      location.id === next.id ? next : location
+      location.id === next.id ? { ...location, ...next } : location
     )))
   }
 
@@ -888,13 +892,17 @@ export default function App() {
     const payload: VisibilityRequest = {
       locations: selectedLocations
         .slice(0, MAXIMUM_SELECTED_SITES)
-        .map((location) => ({
-          id: location.id,
-          name: location.name,
-          latitude_deg: location.latitude_deg,
-          longitude_deg: location.longitude_deg,
-          elevation_m: location.elevation_m,
-        })),
+        .map((location) => {
+          const stationCode = stationCodeForLocation(location)
+          return {
+            id: location.id,
+            name: location.name,
+            latitude_deg: location.latitude_deg,
+            longitude_deg: location.longitude_deg,
+            elevation_m: location.elevation_m,
+            ...(stationCode ? { burstt_station_code: stationCode } : {}),
+          }
+        }),
       center_time_utc: toUtcIso(centerTime),
       hours_before: hoursBefore,
       hours_after: hoursAfter,
