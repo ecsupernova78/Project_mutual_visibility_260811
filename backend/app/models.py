@@ -281,6 +281,26 @@ class FovTargetSeries(ApiModel):
     east_west_deg: list[float]
     north_south_deg: list[float]
     in_fov: list[bool]
+    beam_ids: list[int | None] | None = None
+
+
+class FovBeam(ApiModel):
+    beam_id: int
+    ix_ew: int
+    iy_ns: int
+    center_east_west_deg: float
+    center_north_south_deg: float
+    polygon_ew_ns_deg: list[tuple[float, float]]
+
+
+class FovBeamModel(ApiModel):
+    model_type: Literal["modeled_assignment_cells"] = "modeled_assignment_cells"
+    reference_frequency_mhz: float = 400.0
+    note: str = (
+        "Provisional FUS 16x16 digital-beam cells, not measured sensitivity contours. "
+        "ID=16*iy+ix and b0=-7.5 are inferred; the 3-degree rotation sign is unverified."
+    )
+    beams: list[FovBeam]
 
 
 class FovSite(ApiModel):
@@ -299,6 +319,7 @@ class FovSite(ApiModel):
     spacing_ns_m: float | None = None
     frequency_min_mhz: float | None = None
     frequency_max_mhz: float | None = None
+    beam_model: FovBeamModel | None = None
     target_series: list[FovTargetSeries]
 
 

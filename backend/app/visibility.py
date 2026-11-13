@@ -14,6 +14,7 @@ from astropy.utils import iers
 
 from app.burstt_stations import BURSTT_STATIONS
 from app.catalog import TARGETS_BY_ID
+from app.fus_beams import get_fus_beam_grid
 from app.models import (
     CalculationMetadata,
     FovCommonMask,
@@ -216,6 +217,7 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                     spacing_ns_m=station.spacing_ns_m if station else None,
                     frequency_min_mhz=station.frequency_min_mhz if station else None,
                     frequency_max_mhz=station.frequency_max_mhz if station else None,
+                    beam_model=get_fus_beam_grid().model if location.burstt_station_code == "FUS" else None,
                     target_series=[],
                 )
             )
@@ -249,16 +251,21 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                 east_west_deg = zenith_distance_deg * np.sin(azimuth_radians)
                 north_south_deg = zenith_distance_deg * np.cos(azimuth_radians)
                 fov_site = fov_sites[site_index]
-                in_fov = _inside_elliptical_fov(
-                    altitudes,
-                    east_west_deg,
-                    north_south_deg,
-                    fov_site.ew_width_deg,
-                    fov_site.ns_width_deg,
-                    fov_site.center_east_west_deg,
-                    fov_site.center_north_south_deg,
-                    fov_site.rotation_deg,
-                )
+                if fov_site.beam_model is not None:
+                    beam_ids = get_fus_beam_grid().beam_ids(altitudes, np.asarray(altaz.az.to_value(u.deg)))
+                    in_fov = beam_ids >= 0
+                else:
+                    beam_ids = None
+                    in_fov = _inside_elliptical_fov(
+                        altitudes,
+                        east_west_deg,
+                        north_south_deg,
+                        fov_site.ew_width_deg,
+                        fov_site.ns_width_deg,
+                        fov_site.center_east_west_deg,
+                        fov_site.center_north_south_deg,
+                        fov_site.rotation_deg,
+                    )
                 fov_mask_arrays.append(in_fov)
                 fov_site.target_series.append(
                     FovTargetSeries(
@@ -266,6 +273,9 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                         east_west_deg=np.round(east_west_deg, 6).tolist(),
                         north_south_deg=np.round(north_south_deg, 6).tolist(),
                         in_fov=in_fov.tolist(),
+                        beam_ids=[int(value) if value >= 0 else None for value in beam_ids]
+                        if beam_ids is not None
+                        else None,
                     )
                 )
 

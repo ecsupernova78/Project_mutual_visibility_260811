@@ -53,17 +53,83 @@ const site: FovSite = {
 }
 
 describe('FovSiteChart', () => {
+  it('labels only the four FUS corners outside the cells and highlights the current target beam', () => {
+    const beams = Array.from({ length: 256 }, (_, beamId) => {
+      const ix = beamId % 16
+      const iy = Math.floor(beamId / 16)
+      const eastWest = (ix - 7.5) * 4
+      const northSouth = (iy - 7.5) * 5
+      return {
+        beam_id: beamId,
+        ix_ew: ix,
+        iy_ns: iy,
+        center_east_west_deg: eastWest,
+        center_north_south_deg: northSouth,
+        polygon_ew_ns_deg: [
+          [eastWest - 2, northSouth - 2.5],
+          [eastWest + 2, northSouth - 2.5],
+          [eastWest + 2, northSouth + 2.5],
+          [eastWest - 2, northSouth + 2.5],
+        ] as [number, number][],
+      }
+    })
+    const fus: FovSite = {
+      ...site,
+      station_code: 'FUS',
+      location_name: 'Fushan (Taiwan)',
+      beam_model: {
+        model_type: 'modeled_assignment_cells',
+        reference_frequency_mhz: 400,
+        note: 'Provisional model cells',
+        beams,
+      },
+      target_series: [{
+        target_id: '3c123',
+        east_west_deg: [0, 50],
+        north_south_deg: [0, 0],
+        in_fov: [true, false],
+        beam_ids: [136, null],
+      }],
+    }
+    const { container, rerender } = render(
+      <FovSiteChart site={fus} targets={[targets[0]]} timeIndex={0} timeUtc="2026-08-11T00:00:00Z" />,
+    )
+    expect(container.querySelectorAll('.fov-beam-cell')).toHaveLength(256)
+    expect([...container.querySelectorAll('.fov-beam-number')].map((label) => label.textContent)).toEqual(['0', '15', '240', '255'])
+    expect(container.querySelectorAll('.fov-beam-model text')).toHaveLength(0)
+    expect(container.querySelector('[data-beam-id="0"]')).toHaveTextContent('Modeled beam 0')
+    expect(container.querySelector('[data-beam-id="255"]')).toHaveTextContent('Modeled beam 255')
+    expect(container.querySelector('[data-beam-id="136"]')).toHaveClass('fov-beam-cell--active')
+    expect(container.querySelector('.fov-region')).toBeNull()
+    expect(container.querySelector('.fov-site-chart')).toHaveClass('fov-site-chart--beam-model')
+    expect(container.querySelector('.fov-svg-title')).toHaveTextContent(/^FUS \(256\)$/)
+    expect(container.querySelector('.fov-legend-label')).toHaveTextContent('3C123')
+    expect(container.querySelector('.fov-legend-beam')).toHaveTextContent('#136')
+    expect(container.querySelector('.fov-method-note')).toBeNull()
+    expect(container.querySelectorAll('.fov-sky-grid circle')).toHaveLength(4)
+    expect(container.querySelectorAll('.fov-sky-grid line')).toHaveLength(12)
+    expect(container.querySelector('.fov-sky-grid circle')).toHaveAttribute('r', '60')
+    expect(container.querySelector('.fov-sky-grid circle')).toHaveTextContent('Altitude 70°')
+    expect(container.querySelector('.fov-symbol-key')).toHaveAttribute('transform', 'translate(82 78)')
+    expect([...container.querySelectorAll('.fov-symbol-key text')].map((text) => text.getAttribute('x'))).toEqual(['8', '8', '8'])
+    expect(container.querySelectorAll('.fov-target-legend [role="row"]')).toHaveLength(1)
+
+    rerender(<FovSiteChart site={fus} targets={[targets[0]]} timeIndex={1} timeUtc="2026-08-11T00:15:00Z" />)
+    expect(container.querySelector('[data-beam-id="136"]')).not.toHaveClass('fov-beam-cell--active')
+    expect(container.querySelector('.fov-legend-beam')).toHaveTextContent('—')
+  })
+
   it('matches the reference geometry and identifies targets beside colored symbols', () => {
     const { container } = render(
       <FovSiteChart site={site} targets={targets} timeIndex={0} timeUtc="2026-08-11T00:00:00Z" />,
     )
 
     const chart = screen.getByRole('img', { name: /LTN field of view/ })
-    expect(chart).toHaveTextContent('EW offset [deg]')
-    expect(chart).toHaveTextContent('NS offset [deg]')
+    expect(chart).toHaveTextContent('EW [°]')
+    expect(chart).toHaveTextContent('NS [°]')
     expect(chart).toHaveTextContent('Zenith')
-    expect(chart).toHaveTextContent('LTN: 70\u00b0 EW \u00d7 80\u00b0 NS')
-    expect(chart).toHaveTextContent('geometric FoV, not beam response')
+    expect(container.querySelector('.fov-svg-title')).toHaveTextContent(/^LTN \(64\)$/)
+    expect(chart).toHaveTextContent('constant-altitude circles')
     expect(container.querySelector('.fov-horizon')).toHaveAttribute('r', '270')
     expect(container.querySelector('.fov-region')?.tagName.toLowerCase()).toBe('ellipse')
     expect(container.querySelector('.fov-region')).toHaveAttribute('cx', '258')
@@ -81,7 +147,7 @@ describe('FovSiteChart', () => {
     expect(container.querySelector('[data-target-id="3c273"]')).toHaveAttribute('x', '408')
     expect(container.querySelector('[data-target-label="3c123"]')).toHaveTextContent('3C123')
     expect(container.querySelector('[data-target-label="3c273"]')).toHaveTextContent('3C273')
-    expect(chart).toHaveTextContent('Below horizon')
+    expect(chart).toHaveTextContent('Below')
     expect(screen.getByRole('button', { name: 'Copy LTN field of view plot image' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Download LTN field of view plot image' })).toBeInTheDocument()
   })
@@ -98,7 +164,7 @@ describe('FovSiteChart', () => {
 
     expect(container.querySelector('.fov-region')).toHaveAttribute('rx', '90')
     expect(container.querySelector('.fov-region')).toHaveAttribute('ry', '135')
-    expect(screen.getByText('FUS: 60\u00b0 EW \u00d7 90\u00b0 NS')).toBeInTheDocument()
+    expect(container.querySelector('.fov-svg-title')).toHaveTextContent(/^FUS \(256\)$/)
   })
 
   it('draws tilted station boresights and rotates the nominal footprint', () => {
@@ -131,7 +197,7 @@ describe('FovSiteChart', () => {
     expect(container.querySelector('.fov-region')).toHaveAttribute('transform', 'rotate(5.5 204 250)')
     expect(screen.getByText('Boresight', { selector: '.fov-boresight-label' })).toBeInTheDocument()
     expect(container.querySelector('[aria-label="Boresight 18° W"]')).toBeInTheDocument()
-    expect(screen.getByText(/16 antennas \(2 × 8\)/)).toBeInTheDocument()
+    expect(screen.queryByText(/16 antennas \(2 × 8\)/)).not.toBeInTheDocument()
 
     rerender(
       <FovSiteChart
@@ -157,7 +223,7 @@ describe('FovSiteChart', () => {
     expect(container.querySelector('[data-target-id="3c123"]')).toHaveAttribute('x', '378')
     expect(container.querySelector('[data-target-id="3c273"]')).toBeNull()
     expect(container.querySelector('[data-target-label="3c273"]')).toBeNull()
-    expect(screen.getByText('3C273 (off plot)', { selector: '.fov-legend-label' })).toBeInTheDocument()
+    expect(screen.getByText('3C273', { selector: '.fov-legend-label' })).toBeInTheDocument()
     expect(container.querySelector('.fov-target-legend')).toHaveTextContent('\u25bc')
     expect(container.querySelectorAll('.fov-legend-label title')[1]).toHaveTextContent('outside the displayed -60 to 60 degree range')
     expect(screen.getByText('2026-08-11 00:15 UTC')).toBeInTheDocument()
@@ -276,8 +342,8 @@ describe('FovSiteChart', () => {
 
     const label = container.querySelector('.fov-legend-label')
     const visibleLabel = label?.lastChild?.textContent ?? ''
-    expect(visibleLabel.endsWith(' (off plot)')).toBe(true)
-    expect(visibleLabel.length).toBeLessThanOrEqual(19)
+    expect(visibleLabel.endsWith('...')).toBe(true)
+    expect(visibleLabel.length).toBeLessThanOrEqual(15)
     expect(label?.querySelector('title')).toHaveTextContent(`${longName}: EW 100.0 deg, NS 0.0 deg`)
     expect(container.querySelector('[data-target-label="long-source"]')).toBeNull()
   })

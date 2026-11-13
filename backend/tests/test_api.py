@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.burstt_stations import BURSTT_STATIONS
+from app.fus_beams import get_fus_beam_grid
 from app.visibility import _inside_elliptical_fov
 
 
@@ -179,6 +180,17 @@ def test_elliptical_fov_pointing_offset_and_counterclockwise_rotation() -> None:
     assert inside.tolist() == [True, True, False, False]
 
 
+def test_fus_model_assigns_all_256_center_directions_to_their_numbered_cells() -> None:
+    grid = get_fus_beam_grid()
+    centers = grid.model.beams
+    azimuth = np.array(
+        [np.rad2deg(np.arctan2(beam.center_east_west_deg, beam.center_north_south_deg)) % 360 for beam in centers]
+    )
+    altitude = np.array([90 - np.hypot(beam.center_east_west_deg, beam.center_north_south_deg) for beam in centers])
+    assert grid.beam_ids(altitude, azimuth).tolist() == list(range(256))
+    assert grid.beam_ids(np.array([-1.0, 20.0]), np.array([0.0, 90.0])).tolist() == [-1, -1]
+
+
 def test_six_burstt_station_profiles_and_fov_masks(client: TestClient, visibility_payload: dict) -> None:
     surveyed_positions = {
         "FUS": (24.75649349722, 121.58164468611, 642.341),
@@ -189,7 +201,7 @@ def test_six_burstt_station_profiles_and_fov_masks(client: TestClient, visibilit
         "PYC": (37.53410008889, 128.44857061389, 545.067),
     }
     expected = {
-        "FUS": (256, 16, 16, 1.0, 0.5, 300, 700, 60, 90, -3.0, 0, 0),
+        "FUS": (256, 16, 16, 1.0, 0.5, 400, 800, 60, 90, -3.0, 0, 0),
         "LTN": (64, 4, 16, 1.0, 2.0, 300, 700, 70, 80, 0.5, 0, 0),
         "GRN": (64, 4, 16, 1.0, 1.0, 400, 800, 60, 90, 1.7, 0, 0),
         "KMN": (16, 1, 16, 1.0, 1.0, 300, 700, 60, 90, 0.0715, 0, 0),
@@ -249,6 +261,20 @@ def test_six_burstt_station_profiles_and_fov_masks(client: TestClient, visibilit
             if series["location_id"] == site["location_id"]
         )
         target_series = site["target_series"][0]
+        if code == "FUS":
+            model = site["beam_model"]
+            assert model["model_type"] == "modeled_assignment_cells"
+            assert model["reference_frequency_mhz"] == 400
+            assert len(model["beams"]) == 256
+            assert model["beams"][224]["iy_ns"] == 14
+            assert all(len(beam["polygon_ew_ns_deg"]) == 16 for beam in model["beams"])
+            assert all(
+                (beam_id is not None) == inside
+                for beam_id, inside in zip(target_series["beam_ids"], target_series["in_fov"], strict=True)
+            )
+            continue
+        assert site["beam_model"] is None
+        assert target_series["beam_ids"] is None
         angle = np.deg2rad(site["rotation_deg"])
         for altitude, east, north, actual in zip(
             altitude_series,
