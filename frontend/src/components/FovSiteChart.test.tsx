@@ -155,6 +155,41 @@ describe('FovSiteChart', () => {
     expect(container.querySelector('.fov-legend-beam')).toHaveTextContent('—')
   })
 
+  it.each([
+    { code: 'LTN', rows: 4, last: 63, status: 'partially_validated', caption: 'Model (EW partly validated)' },
+    { code: 'OGW', rows: 2, last: 31, status: 'hypothesis', caption: 'Hypothesis' },
+  ] as const)('plots $code modeled cells and the correct corner IDs', ({ code, rows, last, status, caption }) => {
+    const beams = Array.from({ length: rows * 16 }, (_, beamId) => {
+      const ix = beamId % 16
+      const iy = Math.floor(beamId / 16)
+      const x = (ix - 7.5) * 3
+      const y = (iy - (rows - 1) / 2) * 10
+      return {
+        beam_id: beamId, ix_ew: ix, iy_ns: iy,
+        center_east_west_deg: x, center_north_south_deg: y,
+        polygon_ew_ns_deg: [[x - 1.5, y - 5], [x + 1.5, y - 5], [x + 1.5, y + 5], [x - 1.5, y + 5], [x - 1.5, y - 5]] as [number, number][],
+      }
+    })
+    const modelSite: FovSite = {
+      ...site, station_code: code, location_name: code,
+      beam_model: {
+        model_type: 'modeled_assignment_cells', evidence_status: status,
+        reference_frequency_mhz: 400, note: `${code} assignment model, not sensitivity contours.`, beams,
+      },
+      target_series: [{ target_id: '3c123', east_west_deg: [0, 0], north_south_deg: [0, 0], in_fov: [true, true], beam_ids: [8, 8] }],
+    }
+    const { container } = render(
+      <FovSiteChart site={modelSite} targets={[targets[0]]} timeIndex={0} timeUtc="2026-11-16T00:00:00Z" />,
+    )
+    expect(container.querySelectorAll('.fov-beam-cell')).toHaveLength(rows * 16)
+    expect([...container.querySelectorAll('.fov-beam-number')].map((label) => label.textContent))
+      .toEqual(['0', '15', String(last - 15), String(last)])
+    expect(container.querySelector('.fov-svg-subtitle')).toHaveTextContent(caption)
+    expect(container.querySelector('.fov-region')).toBeNull()
+    expect(container.querySelector('[data-beam-id="8"]')).toHaveClass('fov-beam-cell--active')
+    expect(container.querySelector('svg')?.innerHTML).not.toContain('NaN')
+  })
+
   it('matches the reference geometry and identifies targets beside colored symbols', () => {
     const { container } = render(
       <FovSiteChart site={site} targets={targets} timeIndex={0} timeUtc="2026-08-11T00:00:00Z" />,
@@ -203,13 +238,13 @@ describe('FovSiteChart', () => {
     expect(container.querySelector('.fov-svg-title')).toHaveTextContent(/^FUS \(256\)$/)
   })
 
-  it('draws tilted station boresights and rotates the nominal footprint', () => {
+  it('draws tilted nominal footprints for sites without a beam model', () => {
     const { container, rerender } = render(
       <FovSiteChart
         site={{
           ...site,
-          station_code: 'OGW',
-          location_name: 'Ogasawara (Japan)',
+          station_code: null,
+          location_name: 'Tilted test site',
           ew_width_deg: 60,
           ns_width_deg: 90,
           center_east_west_deg: -18,
@@ -237,7 +272,7 @@ describe('FovSiteChart', () => {
 
     rerender(
       <FovSiteChart
-        site={{ ...site, station_code: 'PYC', center_east_west_deg: 0, center_north_south_deg: -16, rotation_deg: -0.23 }}
+        site={{ ...site, station_code: null, center_east_west_deg: 0, center_north_south_deg: -16, rotation_deg: -0.23 }}
         targets={targets}
         timeIndex={0}
         timeUtc="2026-08-11T00:00:00Z"

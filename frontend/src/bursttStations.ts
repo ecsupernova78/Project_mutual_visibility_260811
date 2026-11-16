@@ -22,7 +22,7 @@ export interface BursttStationMetadata {
 
 // Public station metadata extracted from BURSTTStations.json. Internal server,
 // network, and filesystem fields are intentionally not included in the app.
-// The pointing offsets for OGW/PYC were supplied separately by the user.
+// OGW-32 pointing remains unknown; PYC has an approximate 12-degree south tilt.
 export const BURSTT_STATIONS: Record<BursttStationCode, BursttStationMetadata> = {
   FUS: {
     code: 'FUS', name: 'Fushan (Taiwan)', latitude_deg: 24.75649349722,
@@ -60,9 +60,9 @@ export const BURSTT_STATIONS: Record<BursttStationCode, BursttStationMetadata> =
     code: 'OGW', name: 'Ogasawara (Japan)', latitude_deg: 27.0919857,
     longitude_deg: 142.21690964167, elevation_m: 261.534,
     antenna_count: 32, antenna_rows: 2, antennas_per_row: 16,
-    spacing_ew_m: 1, spacing_ns_m: 1, frequency_min_mhz: 400,
-    frequency_max_mhz: 800, rotation_deg: -5.5,
-    center_east_west_deg: -18, center_north_south_deg: 0,
+    spacing_ew_m: 0.833333, spacing_ns_m: 1, frequency_min_mhz: 300,
+    frequency_max_mhz: 700, rotation_deg: -26.9,
+    center_east_west_deg: 0, center_north_south_deg: 0,
   },
   PYC: {
     code: 'PYC', name: 'Pyeongchang (Kor) · PYC', latitude_deg: 37.53410008889,

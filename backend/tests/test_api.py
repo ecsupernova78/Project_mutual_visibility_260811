@@ -205,7 +205,7 @@ def test_six_burstt_station_profiles_and_fov_masks(client: TestClient, visibilit
         "LTN": (64, 4, 16, 1.0, 2.0, 300, 700, 70, 80, 0.5, 0, 0),
         "GRN": (64, 4, 16, 1.0, 1.0, 400, 800, 60, 90, 1.7, 0, 0),
         "KMN": (16, 1, 16, 1.0, 1.0, 300, 700, 60, 90, 0.0715, 0, 0),
-        "OGW": (32, 2, 16, 1.0, 1.0, 400, 800, 60, 90, -5.5, -18, 0),
+        "OGW": (32, 2, 16, 0.833333, 1.0, 300, 700, 60, 90, -26.9, 0, 0),
         "PYC": (16, 1, 16, 1.0, 1.0, 300, 700, 60, 90, -0.23, 0, -12),
     }
     payload = deepcopy(visibility_payload)
@@ -299,6 +299,19 @@ def test_six_burstt_station_profiles_and_fov_masks(client: TestClient, visibilit
             ]
             assert target_series["beam_ids"] == expected_ids
             assert target_series["in_fov"] == [value is not None for value in expected_ids]
+            continue
+        if code in {"LTN", "OGW"}:
+            model = site["beam_model"]
+            assert model["geometry_type"] == "cells"
+            assert model["source_package"] == "BeamViz_SiteBeams_261113_new"
+            assert model["evidence_status"] == ("partially_validated" if code == "LTN" else "hypothesis")
+            assert model["rotation_applied_deg"] == station.rotation_deg
+            assert len(model["beams"]) == (64 if code == "LTN" else 32)
+            assert [beam["beam_id"] for beam in model["beams"]] == list(range(len(model["beams"])))
+            assert all(
+                (beam_id is not None) == inside
+                for beam_id, inside in zip(target_series["beam_ids"], target_series["in_fov"], strict=True)
+            )
             continue
         assert site["beam_model"] is None
         assert target_series["beam_ids"] is None

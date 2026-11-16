@@ -341,7 +341,7 @@ class FovBeam(ApiModel):
 class FovBeamModel(ApiModel):
     model_type: Literal["modeled_assignment_cells"] = "modeled_assignment_cells"
     geometry_type: Literal["cells", "fan_strips"] = "cells"
-    evidence_status: Literal["trigger_validated", "hypothesis"] = "trigger_validated"
+    evidence_status: Literal["trigger_validated", "partially_validated", "hypothesis"] = "trigger_validated"
     reference_frequency_mhz: float = 400.0
     source_package: str = "BeamViz_SiteBeams_261113"
     rotation_applied_deg: float = -3.0

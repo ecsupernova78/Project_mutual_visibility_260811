@@ -29,6 +29,14 @@ from app.models import (
     VisibleInterval,
 )
 from app.pyc_beams import get_pyc_fan_beams
+from app.site_beams import get_ltn_beam_grid, get_ogw_beam_grid
+
+_BEAM_GRID_BY_STATION = {
+    "FUS": get_fus_beam_grid,
+    "PYC": get_pyc_fan_beams,
+    "LTN": get_ltn_beam_grid,
+    "OGW": get_ogw_beam_grid,
+}
 
 # Calculations must be deterministic and must never wait on a network request.
 # Astropy's bundled IERS table is sufficient for this planning interface.
@@ -244,10 +252,8 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                     frequency_min_mhz=station.frequency_min_mhz if station else None,
                     frequency_max_mhz=station.frequency_max_mhz if station else None,
                     beam_model=(
-                        get_fus_beam_grid().model
-                        if location.burstt_station_code == "FUS"
-                        else get_pyc_fan_beams().model
-                        if location.burstt_station_code == "PYC"
+                        _BEAM_GRID_BY_STATION[location.burstt_station_code]().model
+                        if location.burstt_station_code in _BEAM_GRID_BY_STATION
                         else None
                     ),
                     target_series=[],
@@ -284,7 +290,7 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                 north_south_deg = zenith_distance_deg * np.cos(azimuth_radians)
                 fov_site = fov_sites[site_index]
                 if fov_site.beam_model is not None:
-                    grid = get_pyc_fan_beams() if fov_site.station_code == "PYC" else get_fus_beam_grid()
+                    grid = _BEAM_GRID_BY_STATION[fov_site.station_code]()
                     beam_ids = grid.beam_ids(altitudes, np.asarray(altaz.az.to_value(u.deg)))
                     in_fov = beam_ids >= 0
                 else:

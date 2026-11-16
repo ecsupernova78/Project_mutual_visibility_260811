@@ -34,8 +34,8 @@ class BursttStation:
 
 
 # Position, layout, frequency limits and array rotation transcribed from the
-# user's BURSTTStations.json. Operational IP addresses, server names and paths
-# are intentionally excluded. PYC/OGW pointing offsets came from the user.
+# user's BURSTTStations.json and BeamViz_SiteBeams_261113_new/stations.json.
+# Operational IP addresses, server names and paths are intentionally excluded.
 BURSTT_STATIONS: dict[str, BursttStation] = {
     "FUS": BursttStation(
         code="FUS",
@@ -55,7 +55,10 @@ BURSTT_STATIONS: dict[str, BursttStation] = {
     ),
     "LTN": BursttStation(
         code="LTN",
-        profile_note="Nominal FoV only: EW numbering/reference wavelength and dated NS steering remain unresolved.",
+        profile_note=(
+            "64-beam assignment model: EW grid agrees with one B0329+54 pulse; NS centres are the last documented "
+            "four-angle command, including a date-dependent Sun beam. This is not a measured response map."
+        ),
         latitude_deg=23.71457841944,
         longitude_deg=120.82440456389,
         elevation_m=882.641,
@@ -105,8 +108,9 @@ BURSTT_STATIONS: dict[str, BursttStation] = {
     "OGW": BursttStation(
         code="OGW",
         profile_note=(
-            "32 antennas (2x16) confirmed since August 2026. Digital beams and OGW-32 pointing are unknown. "
-            "The displayed nominal ellipse retains the legacy OGW-16 planning geometry, not an OGW-32 beam model."
+            "32 antennas (2x16) confirmed since August 2026. The 32 digital cells are an unvalidated model "
+            "from array configuration and beamformer defaults; operational steering and pointing are unknown. "
+            "The 18 degree west tilt was documented only for the earlier OGW-16 mode and is not applied."
         ),
         latitude_deg=27.0919857,
         longitude_deg=142.21690964167,
@@ -114,14 +118,13 @@ BURSTT_STATIONS: dict[str, BursttStation] = {
         antenna_count=32,
         antenna_rows=2,
         antennas_per_row=16,
-        spacing_ew_m=1.0,
+        spacing_ew_m=0.833333,
         spacing_ns_m=1.0,
-        frequency_min_mhz=400,
-        frequency_max_mhz=800,
+        frequency_min_mhz=300,
+        frequency_max_mhz=700,
         ew_width_deg=60,
         ns_width_deg=90,
-        rotation_deg=-5.5,
-        center_east_west_deg=-18.0,
+        rotation_deg=-26.9,
     ),
     "PYC": BursttStation(
         code="PYC",

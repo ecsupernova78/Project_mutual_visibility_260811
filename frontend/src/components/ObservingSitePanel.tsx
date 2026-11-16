@@ -413,8 +413,9 @@ export function ObservingSitePanel({
                             spacing EW {station.spacing_ew_m} m / NS {station.spacing_ns_m} m ·
                             {station.frequency_min_mhz}–{station.frequency_max_mhz} MHz ·
                             rotation {station.rotation_deg}°
-                            {stationCode === 'PYC' ? ' · pointing 16° S' : ''}
-                            {stationCode === 'OGW' ? ' · pointing 18° W' : ''}
+                            {stationCode === 'PYC' ? ' \u00b7 approximate tilt 12\u00b0 S' : ''}
+                            {stationCode === 'OGW' ? ' \u00b7 modeled beams; pointing unknown' : ''}
+                            {stationCode === 'LTN' ? ' \u00b7 EW beam grid partly validated' : ''}
                           </p>
                         )}
                       </div>
