@@ -790,3 +790,21 @@ fieldset:disabled { opacity: .68; }
   #atnf-provider-panel .atnf-numeric-filters .catalog-query-grid { grid-template-columns: 1fr; }
   #atnf-provider-panel .catalog-search-heading h2 { font-size: 25px; }
 }
+
+#atnf-provider-panel .atnf-numeric-filters .catalog-field {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+#atnf-provider-panel .atnf-numeric-filters .catalog-field > input,
+#atnf-provider-panel .atnf-numeric-filters .catalog-field > select {
+  grid-row: auto;
+  width: 100%;
+}
+
+#atnf-provider-panel .catalog-coordinate + small {
+  display: block;
+  margin-top: 6px;
+}
+@media (max-width: 560px) {
+  #atnf-provider-panel .catalog-cone-grid { grid-template-columns: 1fr; }
+}
