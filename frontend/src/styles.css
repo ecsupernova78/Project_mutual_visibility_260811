@@ -759,7 +759,7 @@ fieldset:disabled { opacity: .68; }
   .atnf-name-field { grid-column: 1 / -1; }
 }
 
-/* Keep the ATNF search readable without changing the other catalogue tabs. */
+/* Keep the ATNF search readable. */
 #atnf-provider-tab strong { font-size: 18px; }
 #atnf-provider-tab small { font-size: 14px; }
 #atnf-provider-panel .catalog-provider-intro .eyebrow { font-size: 14px; }
@@ -807,4 +807,42 @@ fieldset:disabled { opacity: .68; }
 }
 @media (max-width: 560px) {
   #atnf-provider-panel .catalog-cone-grid { grid-template-columns: 1fr; }
+}
+
+/* Match the LoTSS and VLASS search typography to ATNF. */
+:is(#lofar-provider-tab, #vlass-provider-tab) strong { font-size: 18px; }
+:is(#lofar-provider-tab, #vlass-provider-tab) small { font-size: 14px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-provider-intro .eyebrow { font-size: 14px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-provider-intro h2 { font-size: 30px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-provider-intro p:not(.eyebrow) { font-size: 16px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-mode-switch legend { font-size: 15px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-mode-switch strong { font-size: 18px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-mode-switch small { font-size: 15px; line-height: 1.4; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-search-heading .eyebrow { font-size: 15px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-search-heading h2 { font-size: 28px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-search-heading > span { font-size: 16px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-classification-filter legend { font-size: 18px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-classification-filter legend span { font-size: 14px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-classification-filter strong { font-size: 16px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-classification-filter small { font-size: 14px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-recommended-filter strong { font-size: 18px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-recommended-filter small { font-size: 15px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-filter-note { font-size: 15px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-field { font-size: 16px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-field > input,
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-field select { min-height: 48px; font-size: 17px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-form-help { font-size: 15px; line-height: 1.6; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-query-preview summary { font-size: 15px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-query-preview pre { font-size: 14px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-query-preview > p { font-size: 14px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-search-button,
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-cancel-button { min-height: 48px; font-size: 17px; }
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-cancel-help,
+:is(#lofar-provider-panel, #vlass-provider-panel) .catalog-request-notice { font-size: 14px; }
+
+@media (max-width: 560px) {
+  :is(#lofar-provider-panel, #vlass-provider-panel) .catalog-search-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+  :is(#lofar-provider-panel, #vlass-provider-panel) .catalog-search-heading h2 { font-size: 25px; }
+  :is(#lofar-provider-panel, #vlass-provider-panel) .catalog-search-heading > span { overflow-wrap: anywhere; }
+  :is(#lofar-provider-panel, #vlass-provider-panel) .catalog-cone-grid { grid-template-columns: 1fr; }
 }
