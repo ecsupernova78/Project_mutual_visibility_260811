@@ -5,6 +5,8 @@ $WorkspaceRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $NodeHome = Join-Path $WorkspaceRoot '.tools\node-v24.18.0-win-x64'
 $NodeExecutable = Join-Path $NodeHome 'node.exe'
 $NpmExecutable = Join-Path $NodeHome 'npm.cmd'
+$OfficialPythonHome = Join-Path $WorkspaceRoot '.tools\python-official-3.14.6'
+$OfficialPythonExecutable = Join-Path $OfficialPythonHome 'python.exe'
 
 if (-not (Test-Path -LiteralPath $NodeExecutable) -or -not (Test-Path -LiteralPath $NpmExecutable)) {
     $NodeCommand = Get-Command node -ErrorAction SilentlyContinue
@@ -50,8 +52,19 @@ $env:UV_CACHE_DIR = Join-Path $WorkspaceRoot '.cache\uv'
 $env:UV_PYTHON_INSTALL_DIR = Join-Path $WorkspaceRoot '.tools\python'
 $env:npm_config_cache = Join-Path $WorkspaceRoot '.cache\npm'
 
+# Windows application-control policies can reject unsigned extension modules in
+# uv's standalone Python distribution. Prefer the signed python.org runtime
+# when it has been installed in this workspace.
+if (Test-Path -LiteralPath $OfficialPythonExecutable) {
+    $env:UV_PYTHON = $OfficialPythonExecutable
+    $env:UV_NO_MANAGED_PYTHON = '1'
+}
+
 Write-Host "Mutual Visibility workspace activated."
 Write-Host "Node: $(& $NodeExecutable --version)"
 Write-Host "npm:  $(& $NpmExecutable --version)"
 Write-Host "Git:  $(& $GitExecutable --version)"
 Write-Host "uv:   $(& $UvCommand.Source --version)"
+if (Test-Path -LiteralPath $OfficialPythonExecutable) {
+    Write-Host "Python: $(& $OfficialPythonExecutable --version)"
+}

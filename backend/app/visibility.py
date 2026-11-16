@@ -28,6 +28,7 @@ from app.models import (
     VisibilityResponse,
     VisibleInterval,
 )
+from app.pyc_beams import get_pyc_fan_beams
 
 # Calculations must be deterministic and must never wait on a network request.
 # Astropy's bundled IERS table is sufficient for this planning interface.
@@ -82,6 +83,8 @@ class _CalculationTarget:
     coordinate: SkyCoord
     catalog: str | None = None
     catalog_source_id: str | None = None
+    catalogue_version: str | None = None
+    catalogue_citation: str | None = None
     total_flux_mjy: float | None = None
     peak_flux_mjy: float | None = None
     morphology_code: str | None = None
@@ -98,6 +101,16 @@ class _CalculationTarget:
     duplicate_flag: int | None = None
     quality_flag: int | None = None
     main_sample: bool | None = None
+    flux_frequency_mhz: int | None = None
+    flux_method: str | None = None
+    dm: float | None = None
+    p0_s: float | None = None
+    pos_unc_arcsec: float | None = None
+    pos_coarse: bool | None = None
+    provisional: bool | None = None
+    type_codes: str | None = None
+    is_binary: bool | None = None
+    is_msp: bool | None = None
 
 
 def _calculation_targets(request: VisibilityRequest) -> list[_CalculationTarget]:
@@ -119,6 +132,8 @@ def _calculation_targets(request: VisibilityRequest) -> list[_CalculationTarget]
             coordinate=SkyCoord(ra=target.ra_deg * u.deg, dec=target.dec_deg * u.deg, frame="icrs"),
             catalog=target.catalog,
             catalog_source_id=target.catalog_source_id,
+            catalogue_version=target.catalogue_version,
+            catalogue_citation=target.catalogue_citation,
             total_flux_mjy=target.total_flux_mjy,
             peak_flux_mjy=target.peak_flux_mjy,
             morphology_code=target.morphology_code,
@@ -135,6 +150,16 @@ def _calculation_targets(request: VisibilityRequest) -> list[_CalculationTarget]
             duplicate_flag=target.duplicate_flag,
             quality_flag=target.quality_flag,
             main_sample=target.main_sample,
+            flux_frequency_mhz=target.flux_frequency_mhz,
+            flux_method=target.flux_method,
+            dm=target.dm,
+            p0_s=target.p0_s,
+            pos_unc_arcsec=target.pos_unc_arcsec,
+            pos_coarse=target.pos_coarse,
+            provisional=target.provisional,
+            type_codes=target.type_codes,
+            is_binary=target.is_binary,
+            is_msp=target.is_msp,
         )
         for target in request.custom_targets
     )
@@ -205,6 +230,7 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                     location_id=location.id,
                     location_name=location.name,
                     station_code=location.burstt_station_code,
+                    profile_note=station.profile_note if station else None,
                     ew_width_deg=ew_width_deg,
                     ns_width_deg=ns_width_deg,
                     center_east_west_deg=station.center_east_west_deg if station else 0.0,
@@ -217,7 +243,13 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                     spacing_ns_m=station.spacing_ns_m if station else None,
                     frequency_min_mhz=station.frequency_min_mhz if station else None,
                     frequency_max_mhz=station.frequency_max_mhz if station else None,
-                    beam_model=get_fus_beam_grid().model if location.burstt_station_code == "FUS" else None,
+                    beam_model=(
+                        get_fus_beam_grid().model
+                        if location.burstt_station_code == "FUS"
+                        else get_pyc_fan_beams().model
+                        if location.burstt_station_code == "PYC"
+                        else None
+                    ),
                     target_series=[],
                 )
             )
@@ -252,7 +284,8 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                 north_south_deg = zenith_distance_deg * np.cos(azimuth_radians)
                 fov_site = fov_sites[site_index]
                 if fov_site.beam_model is not None:
-                    beam_ids = get_fus_beam_grid().beam_ids(altitudes, np.asarray(altaz.az.to_value(u.deg)))
+                    grid = get_pyc_fan_beams() if fov_site.station_code == "PYC" else get_fus_beam_grid()
+                    beam_ids = grid.beam_ids(altitudes, np.asarray(altaz.az.to_value(u.deg)))
                     in_fov = beam_ids >= 0
                 else:
                     beam_ids = None
@@ -304,6 +337,8 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                 simultaneous_visible=bool(np.any(simultaneous_mask)),
                 catalog=target.catalog,
                 catalog_source_id=target.catalog_source_id,
+                catalogue_version=target.catalogue_version,
+                catalogue_citation=target.catalogue_citation,
                 total_flux_mjy=target.total_flux_mjy,
                 peak_flux_mjy=target.peak_flux_mjy,
                 morphology_code=target.morphology_code,
@@ -320,6 +355,16 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                 duplicate_flag=target.duplicate_flag,
                 quality_flag=target.quality_flag,
                 main_sample=target.main_sample,
+                flux_frequency_mhz=target.flux_frequency_mhz,
+                flux_method=target.flux_method,
+                dm=target.dm,
+                p0_s=target.p0_s,
+                pos_unc_arcsec=target.pos_unc_arcsec,
+                pos_coarse=target.pos_coarse,
+                provisional=target.provisional,
+                type_codes=target.type_codes,
+                is_binary=target.is_binary,
+                is_msp=target.is_msp,
             )
         )
 

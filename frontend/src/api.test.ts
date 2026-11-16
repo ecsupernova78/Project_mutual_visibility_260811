@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  coneSearchAtnfSources,
   coneSearchLofarSources,
   coneSearchVlassSources,
+  searchAtnfSources,
   searchLofarSources,
   searchVlassSources,
 } from './api'
@@ -144,5 +146,55 @@ describe('VLASS API', () => {
       message: 'The VLASS cone search could not be completed. Please try again shortly.',
       status: 503,
     })
+  })
+})
+
+describe('ATNF API', () => {
+  it('serializes pulsar filters and cone parameters', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(
+      JSON.stringify({ sources: [] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ))
+    await searchAtnfSources({
+      name: 'PSR B0329+54',
+      sort_by: 'name',
+      sort_direction: 'asc',
+      limit: 25,
+      dm_min: 20,
+      p0_max: 1,
+      min_flux_mjy: 1.5,
+      flux_frequency_mhz: 600,
+      include_coarse: false,
+      include_provisional: true,
+      type_code: 'HE',
+      is_binary: false,
+      is_msp: true,
+    })
+    const named = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost')
+    expect(named.pathname).toBe('/api/v1/catalogs/atnf/sources')
+    expect(named.searchParams.get('name')).toBe('PSR B0329+54')
+    expect(named.searchParams.get('dm_min')).toBe('20')
+    expect(named.searchParams.get('flux_frequency_mhz')).toBe('600')
+    expect(named.searchParams.get('include_coarse')).toBe('false')
+    expect(named.searchParams.get('type_code')).toBe('HE')
+    expect(named.searchParams.get('is_binary')).toBe('false')
+    expect(named.searchParams.get('is_msp')).toBe('true')
+
+    await coneSearchAtnfSources({
+      ra_deg: 83.633,
+      dec_deg: 22.014,
+      radius_arcmin: 60,
+      sort_by: 'distance',
+      sort_direction: 'asc',
+      limit: 10,
+      flux_frequency_mhz: 400,
+      include_coarse: true,
+      include_provisional: false,
+    })
+    const cone = new URL(String(fetchMock.mock.calls[1][0]), 'http://localhost')
+    expect(cone.pathname).toBe('/api/v1/catalogs/atnf/cone')
+    expect(cone.searchParams.get('ra_deg')).toBe('83.633')
+    expect(cone.searchParams.get('radius_arcmin')).toBe('60')
+    expect(cone.searchParams.get('include_provisional')).toBe('false')
   })
 })

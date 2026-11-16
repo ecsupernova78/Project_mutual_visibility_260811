@@ -22,6 +22,8 @@ OpenAPI 문서는 `http://127.0.0.1:8000/docs`에서 볼 수 있습니다.
 - `GET /api/v1/catalogs/lotss-dr3/cone`: ICRS 중심 좌표와 반경 안의 LoTSS DR3 source 조회
 - `GET /api/v1/catalogs/vlass/sources`: VLASS Epoch 1 Quick Look 밝기 순 목록 또는 component ID prefix 조회
 - `GET /api/v1/catalogs/vlass/cone`: ICRS 중심 좌표와 반경 안의 VLASS component 조회
+- `GET /api/v1/catalogs/atnf/sources`: 고정된 ATNF v2.9.0의 펄서 이름·별칭 또는 밝기순 목록 검색
+- `GET /api/v1/catalogs/atnf/cone`: ICRS 좌표 주변 ATNF 펄서 검색
 - `POST /api/v1/visibility/altitude-series`: 선택 위치의 시간–고도 계열과 공통 가시 샘플 계산
 
 요청은 서로 다른 ID를 가진 위치 1~10개, 시간창, 샘플 간격, 최소 고도, 기본 대상 ID와 외부 카탈로그 좌표 snapshot을 받습니다. 기본·외부 대상을 합해 최대 25개, 시간축은 최소 2개·최대 2,000개 샘플로 제한하며 알 수 없는 필드·대상, 중복 ID, 범위를 벗어난 좌표를 거부합니다.
@@ -76,6 +78,16 @@ SIMBAD TAP에서 선호 별칭과 유형 설명을 보강합니다. `crossmatch_
 최대 32개까지 캐시합니다. 서로 다른 upstream job은 기본 2개(설정 가능 범위 1~4개)까지만 동시에
 실행합니다. 동시 상한에 도달한 새 검색은 `429`와 `Retry-After: 5`를 반환하지만, 이미 실행 중인
 동일 검색은 그 job에 합류합니다. 캐시는 process-local이므로 여러 worker 사이에는 공유되지 않습니다.
+
+## ATNF 펄서 스냅샷
+
+ATNF 검색은 공식 `psrcat.db` v2.9.0에서 생성한 로컬 4,503행을 사용합니다.
+이름·B/J 별칭, cone search, DM·주기·400/600/800 MHz 추정 플럭스 필터를
+지원합니다. 응답은 좌표 불확실도와 잠정·거친 위치 표시, 플럭스 추정 방법을
+포함합니다. 계산 대상으로 선택한 펄서의 좌표·DM·주기·플럭스 출처는
+`custom_targets` 스냅샷으로 전달됩니다. 데이터 SHA-256, 재생성 명령,
+비현실적인 외삽값의 보수적 대체 규칙은
+[`backend/app/data/atnf/README.md`](app/data/atnf/README.md)에 기록했습니다.
 
 ## 과학적 경계
 

@@ -201,12 +201,12 @@ def test_six_burstt_station_profiles_and_fov_masks(client: TestClient, visibilit
         "PYC": (37.53410008889, 128.44857061389, 545.067),
     }
     expected = {
-        "FUS": (256, 16, 16, 1.0, 0.5, 400, 800, 60, 90, -3.0, 0, 0),
+        "FUS": (256, 16, 16, 1.0, 0.5, 300, 700, 60, 90, -3.0, 0, 0),
         "LTN": (64, 4, 16, 1.0, 2.0, 300, 700, 70, 80, 0.5, 0, 0),
         "GRN": (64, 4, 16, 1.0, 1.0, 400, 800, 60, 90, 1.7, 0, 0),
         "KMN": (16, 1, 16, 1.0, 1.0, 300, 700, 60, 90, 0.0715, 0, 0),
-        "OGW": (16, 2, 8, 1.0, 1.0, 400, 800, 60, 90, -5.5, -18, 0),
-        "PYC": (16, 1, 16, 1.0, 1.0, 300, 700, 60, 90, -0.23, 0, -16),
+        "OGW": (32, 2, 16, 1.0, 1.0, 400, 800, 60, 90, -5.5, -18, 0),
+        "PYC": (16, 1, 16, 1.0, 1.0, 300, 700, 60, 90, -0.23, 0, -12),
     }
     payload = deepcopy(visibility_payload)
     payload.update(
@@ -267,11 +267,38 @@ def test_six_burstt_station_profiles_and_fov_masks(client: TestClient, visibilit
             assert model["reference_frequency_mhz"] == 400
             assert len(model["beams"]) == 256
             assert model["beams"][224]["iy_ns"] == 14
-            assert all(len(beam["polygon_ew_ns_deg"]) == 16 for beam in model["beams"])
+            assert all(len(beam["polygon_ew_ns_deg"]) == 49 for beam in model["beams"])
             assert all(
                 (beam_id is not None) == inside
                 for beam_id, inside in zip(target_series["beam_ids"], target_series["in_fov"], strict=True)
             )
+            continue
+        if code == "PYC":
+            model = site["beam_model"]
+            assert model["geometry_type"] == "fan_strips"
+            assert model["evidence_status"] == "hypothesis"
+            assert model["validated_from_utc"] is None
+            assert model["validated_through_utc"] is None
+            assert model["rotation_applied_deg"] == -0.23
+            assert len(model["beams"]) == 16
+            assert all(
+                beam["center_east_west_deg"] is None and beam["center_north_south_deg"] is None
+                for beam in model["beams"]
+            )
+            assert all(len(beam["polygon_ew_ns_deg"]) == 121 for beam in model["beams"])
+            # Check the API routes PYC through EW-only assignment, not the FUS grid.
+            east = np.array(target_series["east_west_deg"])
+            north = np.array(target_series["north_south_deg"])
+            azimuth = np.arctan2(east, north)
+            rotation = np.deg2rad(-0.23)
+            lp = np.cos(np.deg2rad(altitude_series)) * np.sin(azimuth + rotation)
+            indices = lp / (299792458.0 / 400e6 / 16) + 8
+            expected_ids = [
+                min(15, int(np.floor(index))) if alt >= 0 and 0 <= index <= 16 else None
+                for index, alt in zip(indices, altitude_series, strict=True)
+            ]
+            assert target_series["beam_ids"] == expected_ids
+            assert target_series["in_fov"] == [value is not None for value in expected_ids]
             continue
         assert site["beam_model"] is None
         assert target_series["beam_ids"] is None

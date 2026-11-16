@@ -16,13 +16,15 @@ export interface FovBeam {
   beam_id: number
   ix_ew: number
   iy_ns: number
-  center_east_west_deg: number
-  center_north_south_deg: number
+  center_east_west_deg: number | null
+  center_north_south_deg: number | null
   polygon_ew_ns_deg: [number, number][]
 }
 
 export interface FovBeamModel {
   model_type: 'modeled_assignment_cells'
+  geometry_type?: 'cells' | 'fan_strips'
+  evidence_status?: 'trigger_validated' | 'hypothesis'
   reference_frequency_mhz: number
   note: string
   beams: FovBeam[]
@@ -34,6 +36,7 @@ export interface FovSite {
   ew_width_deg: number
   ns_width_deg: number
   station_code?: string | null
+  profile_note?: string | null
   center_east_west_deg?: number
   center_north_south_deg?: number
   rotation_deg?: number
@@ -114,7 +117,7 @@ function statusDescription(status: MarkerStatus) {
   switch (status) {
     case 'inside': return 'inside the field of view'
     case 'outside': return 'above the horizon, outside the field of view'
-    case 'below': return 'at or below the horizon'
+    case 'below': return 'below the horizon'
     case 'unavailable': return 'coordinates unavailable'
   }
 }
@@ -150,6 +153,8 @@ export function FovSiteChart({
   const descriptionId = `${instanceId}-description`
   const clipId = `${instanceId}-plot-clip`
   const beamModel = site.beam_model
+  const fanStrips = beamModel?.geometry_type === 'fan_strips'
+  const hypothesis = beamModel?.evidence_status === 'hypothesis'
   const targetById = new Map(targets.map((target) => [target.id, target]))
   const colorByTargetId = new Map(targets.map((target, index) => [target.id, sourceColor(index)]))
   const markers = site.target_series
@@ -161,7 +166,7 @@ export function FovSiteChart({
       const insidePlot = hasCoordinates
         && Math.abs(eastWest) <= DEGREES_PER_HALF_PLOT
         && Math.abs(northSouth) <= DEGREES_PER_HALF_PLOT
-      const belowHorizon = hasCoordinates && Math.hypot(eastWest, northSouth) >= horizonRadiusDeg
+      const belowHorizon = hasCoordinates && Math.hypot(eastWest, northSouth) > horizonRadiusDeg + 1e-6
       const status: MarkerStatus = !hasCoordinates
         ? 'unavailable'
         : belowHorizon ? 'below' : series.in_fov[timeIndex] === true ? 'inside' : 'outside'
@@ -222,12 +227,13 @@ export function FovSiteChart({
             East-West and North-South coordinates range from -60 to 60 degrees.
             The spherical sky grid shows constant-altitude circles and azimuth spokes every 30 degrees. Axis values are projected zenith-distance components: EW = (90° − altitude) sin(azimuth), NS = (90° − altitude) cos(azimuth). Radii 20°, 40°, 60° and 80° correspond to altitudes 70°, 50°, 30° and 10°; azimuth is measured clockwise from North.
             {beamModel
-              ? 'The 256 FUS regions are provisional digital-beam assignment cells from the supplied model, not measured sensitivity contours. Only corner beams 0, 15, 240 and 255 are labeled outside the footprint. Highlighted cells contain a selected source at this UTC time.'
+              ? `${beamModel.note} ${fanStrips ? 'Fan strips have no point centres or internal numbers.' : 'Only corner beams 0, 15, 240 and 255 are labeled outside the footprint.'} Highlighted cells contain a selected source at this UTC time.`
               : `The shaded ellipse marks the geometric ${site.ew_width_deg} by ${site.ns_width_deg} degree nominal field of view, centered ${pointingLabel(centerEastWest, centerNorthSouth)} with rotation ${rotation} degrees counterclockwise from East toward North. This is not a measured beam sensitivity response.`}
             O means inside the field of view,
-            X means above the horizon but outside, and the downward triangle means at
-            or below the horizon. Sources outside the plotted square have no plotted
+            X means above the horizon but outside, and the downward triangle means
+            below the horizon. Sources outside the plotted square have no plotted
             marker or name, but remain listed in the status legend.
+            {site.profile_note}
           </desc>
           <rect width={VIEW_WIDTH} height={viewHeight} fill="#fff" />
           <defs>
@@ -236,10 +242,10 @@ export function FovSiteChart({
             </clipPath>
           </defs>
 
-          <text className="fov-svg-title" x={PLOT_CENTER_X} y="31">
+          <text className="fov-svg-title" x={PLOT_CENTER_X} y="31" aria-description={beamModel?.note ?? site.profile_note ?? undefined}>
             {siteLabel}{antennaCount == null ? '' : ` (${antennaCount})`}
           </text>
-          <text className="fov-svg-subtitle" x={PLOT_CENTER_X} y="52">{formatUtc(timeUtc)}</text>
+          <text className="fov-svg-subtitle" x={PLOT_CENTER_X} y="52">{formatUtc(timeUtc)}{hypothesis ? ' \u00b7 Hypothesis' : ''}</text>
 
           <g className="fov-grid">
             {TICKS.map((tick) => (
@@ -256,7 +262,7 @@ export function FovSiteChart({
 
           <g clipPath={`url(#${clipId})`}>
             {beamModel ? (
-              <g className="fov-beam-model" aria-label="FUS modeled digital beam cells 0 through 255">
+              <g className="fov-beam-model" aria-label={`${siteLabel} ${hypothesis ? 'hypothesis' : 'modeled'} digital ${fanStrips ? 'fan beams' : 'beam cells'} 0 through ${beamModel.beams.length - 1}`}>
                 {beamModel.beams.map((beam) => (
                   <g key={beam.beam_id}>
                     <path
@@ -264,7 +270,7 @@ export function FovSiteChart({
                       d={beamPolygonPath(beam.polygon_ew_ns_deg)}
                       data-beam-id={beam.beam_id}
                     >
-                      <title>Modeled beam {beam.beam_id} (EW {beam.ix_ew}, NS {beam.iy_ns})</title>
+                      <title>{fanStrips ? 'Hypothesis fan beam' : 'Modeled beam'} {beam.beam_id} (EW {beam.ix_ew}{fanStrips ? '' : `, NS ${beam.iy_ns}`})</title>
                     </path>
                   </g>
                 ))}
@@ -349,9 +355,10 @@ export function FovSiteChart({
             })}
           </g>
 
-          {beamModel && (
+          {beamModel && !fanStrips && (
             <g className="fov-beam-corner-labels" aria-label="Corner beam numbers">
               {beamModel.beams.filter((beam) => [0, 15, 240, 255].includes(beam.beam_id)).map((beam) => {
+                if (beam.center_east_west_deg == null) return null
                 const northernCorner = beam.beam_id >= 240
                 const northSouthEdges = beam.polygon_ew_ns_deg.map(([, northSouth]) => northSouth)
                 const edge = northernCorner ? Math.max(...northSouthEdges) : Math.min(...northSouthEdges)

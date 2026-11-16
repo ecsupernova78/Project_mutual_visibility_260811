@@ -30,6 +30,7 @@ class BursttStation:
     rotation_deg: float
     center_east_west_deg: float = 0.0
     center_north_south_deg: float = 0.0
+    profile_note: str | None = None
 
 
 # Position, layout, frequency limits and array rotation transcribed from the
@@ -46,14 +47,15 @@ BURSTT_STATIONS: dict[str, BursttStation] = {
         antennas_per_row=16,
         spacing_ew_m=1.0,
         spacing_ns_m=0.5,
-        frequency_min_mhz=400,
-        frequency_max_mhz=800,
+        frequency_min_mhz=300,
+        frequency_max_mhz=700,
         ew_width_deg=60,
         ns_width_deg=90,
         rotation_deg=-3.0,
     ),
     "LTN": BursttStation(
         code="LTN",
+        profile_note="Nominal FoV only: EW numbering/reference wavelength and dated NS steering remain unresolved.",
         latitude_deg=23.71457841944,
         longitude_deg=120.82440456389,
         elevation_m=882.641,
@@ -102,12 +104,16 @@ BURSTT_STATIONS: dict[str, BursttStation] = {
     ),
     "OGW": BursttStation(
         code="OGW",
+        profile_note=(
+            "32 antennas (2x16) confirmed since August 2026. Digital beams and OGW-32 pointing are unknown. "
+            "The displayed nominal ellipse retains the legacy OGW-16 planning geometry, not an OGW-32 beam model."
+        ),
         latitude_deg=27.0919857,
         longitude_deg=142.21690964167,
         elevation_m=261.534,
-        antenna_count=16,
+        antenna_count=32,
         antenna_rows=2,
-        antennas_per_row=8,
+        antennas_per_row=16,
         spacing_ew_m=1.0,
         spacing_ns_m=1.0,
         frequency_min_mhz=400,
@@ -119,6 +125,11 @@ BURSTT_STATIONS: dict[str, BursttStation] = {
     ),
     "PYC": BursttStation(
         code="PYC",
+        profile_note=(
+            "16 EW fan strips enabled as a hypothesis. Approximate 12 degree south mechanical tilt "
+            "and 90 degree NS primary-beam FWHM are not applied as strip cutoffs. "
+            "FPGA b0 and numbering remain unconfirmed."
+        ),
         latitude_deg=37.53410008889,
         longitude_deg=128.44857061389,
         elevation_m=545.067,
@@ -132,6 +143,6 @@ BURSTT_STATIONS: dict[str, BursttStation] = {
         ew_width_deg=60,
         ns_width_deg=90,
         rotation_deg=-0.23,
-        center_north_south_deg=-16.0,
+        center_north_south_deg=-12.0,
     ),
 }

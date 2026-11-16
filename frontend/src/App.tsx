@@ -108,7 +108,43 @@ function englishCatalogText(value: string | null | undefined) {
   return value && !HANGUL_PATTERN.test(value) ? value : null
 }
 
+function catalogLabel(catalog: 'lofar_dr3' | 'vlass' | 'atnf') {
+  if (catalog === 'lofar_dr3') return 'LoTSS'
+  if (catalog === 'vlass') return 'VLASS'
+  return 'ATNF'
+}
+
+function atnfMethodLabel(method: string | null | undefined) {
+  if (!method) return 'method unavailable'
+  if (method === 'alpha_default') return 'assumed alpha = -1.6'
+  return method.replaceAll('_', ' ')
+}
+
 function snapshotCatalogSource(source: ExternalCatalogSource): CustomTargetSnapshot {
+  if (source.catalog === 'atnf') {
+    return {
+      id: source.id,
+      name: source.name,
+      aliases: [...new Set(source.aliases)].slice(0, 5),
+      ra_deg: source.ra_deg,
+      dec_deg: source.dec_deg,
+      catalog: 'atnf',
+      catalog_source_id: source.source_id,
+      catalogue_version: source.catalogue_version,
+      catalogue_citation: source.catalogue_citation,
+      ...(source.total_flux_mjy == null ? {} : { total_flux_mjy: source.total_flux_mjy }),
+      flux_frequency_mhz: source.flux_frequency_mhz,
+      flux_method: source.flux_method,
+      ...(source.dm == null ? {} : { dm: source.dm }),
+      ...(source.p0_s == null ? {} : { p0_s: source.p0_s }),
+      ...(source.pos_unc_arcsec == null ? {} : { pos_unc_arcsec: source.pos_unc_arcsec }),
+      pos_coarse: source.pos_coarse,
+      provisional: source.provisional,
+      ...(source.type_codes ? { type_codes: source.type_codes } : {}),
+      is_binary: source.is_binary,
+      is_msp: source.is_msp,
+    }
+  }
   const morphologyLabel = englishCatalogText(source.morphology_label)
   const morphologyDescription = englishCatalogText(source.morphology_description)
   const objectTypeLabel = englishCatalogText(source.object_type_label)
@@ -520,6 +556,29 @@ function Results({
                     {target.main_sample ? 'Main sample' : 'Outside main sample'}
                   </p>
                 )}
+              </div>
+            )}
+            {target.catalog === 'atnf' && (
+              <div className="catalog-source-details">
+                <p className="catalog-source-meta">
+                  ATNF Pulsar Catalogue v{target.catalogue_version ?? '2.9.0'}
+                  {' | '}{target.catalogue_citation ?? 'Manchester et al. (2005)'}
+                </p>
+                <p className="catalog-source-meta">
+                  ATNF ID {target.catalog_source_id}
+                  {' | '}S{target.flux_frequency_mhz ?? 600} {formatRadioFlux(target.total_flux_mjy, 'mJy')}
+                  {' | '}{atnfMethodLabel(target.flux_method)}
+                </p>
+                <p className="catalog-source-meta">
+                  DM {target.dm == null ? 'n/a' : target.dm.toFixed(3)} pc cm^-3
+                  {' | '}P0 {target.p0_s == null ? 'n/a' : target.p0_s.toFixed(6)} s
+                  {' | '}Position +/-{target.pos_unc_arcsec == null ? 'n/a' : target.pos_unc_arcsec.toFixed(2)} arcsec
+                </p>
+                <p className="catalog-source-meta">
+                  {target.type_codes ? 'Type ' + target.type_codes + ' | ' : ''}
+                  {target.provisional ? 'Provisional | ' : ''}{target.pos_coarse ? 'Coarse position | ' : ''}
+                  {target.is_msp ? 'MSP | ' : ''}{target.is_binary ? 'Binary' : ''}
+                </p>
               </div>
             )}
           </div>
@@ -1242,9 +1301,31 @@ export default function App() {
                       <span>
                         <b>{target.name}</b>
                         <small>
-                          {target.catalog === 'lofar_dr3' ? 'LoTSS' : 'VLASS'} · {target.catalog_source_id}
+                          {catalogLabel(target.catalog)} · {target.catalog_source_id}
                           {' · '}{target.ra_deg.toFixed(4)}°, {target.dec_deg.toFixed(4)}°
                         </small>
+                        {target.catalog === 'atnf' ? (
+                          <>
+                            <small>
+                              ATNF v{target.catalogue_version ?? '2.9.0'}
+                              {' | '}{target.catalogue_citation ?? 'Manchester et al. (2005)'}
+                            </small>
+                            <small>
+                              S{target.flux_frequency_mhz ?? 600} {formatRadioFlux(target.total_flux_mjy, 'mJy')}
+                              {' | '}{atnfMethodLabel(target.flux_method)}
+                            </small>
+                            <small>
+                              DM {target.dm == null ? 'n/a' : target.dm.toFixed(3)} pc cm^-3
+                              {' | '}P0 {target.p0_s == null ? 'n/a' : target.p0_s.toFixed(6)} s
+                              {' | '}Position +/-{target.pos_unc_arcsec == null ? 'n/a' : target.pos_unc_arcsec.toFixed(2)} arcsec
+                            </small>
+                            <small>
+                              {target.provisional ? 'Provisional | ' : ''}{target.pos_coarse ? 'Coarse position | ' : ''}
+                              {target.type_codes ? 'Type ' + target.type_codes + ' | ' : ''}
+                              {target.is_msp ? 'MSP | ' : ''}{target.is_binary ? 'Binary' : ''}
+                            </small>
+                          </>
+                        ) : (
                         <small>
                           {target.catalog === 'lofar_dr3' ? 'LoTSS morphology' : 'VLASS component type'} {target.morphology_code
                             ? `${target.morphology_code} — ${target.morphology_label ?? 'No description'}`
@@ -1253,6 +1334,7 @@ export default function App() {
                             ? `${target.object_type_label}${target.object_type_code ? ` (${target.object_type_code})` : ''}`
                             : 'None or unconfirmed'}
                         </small>
+                        )}
                         {target.catalog === 'vlass' && (
                           <small>
                             Quality {target.quality_flag ?? '—'} · Duplicate {target.duplicate_flag ?? '—'} ·{' '}

@@ -9,7 +9,7 @@ export interface ObserverLocation {
   burstt_station_code?: BursttStationCode
 }
 
-export type CatalogName = 'lofar_dr3' | 'vlass'
+export type CatalogName = 'lofar_dr3' | 'vlass' | 'atnf'
 
 interface CatalogSourceBase {
   id: string
@@ -53,7 +53,90 @@ export interface VlassSource extends CatalogSourceBase {
   main_sample: boolean
 }
 
-export type ExternalCatalogSource = LofarSource | VlassSource
+export type AtnfFluxMethod = 'measured' | 'interp' | 'spindx' | 'extrap_two_point' | 'alpha_default' | 'none'
+export type AtnfFluxFrequency = 400 | 600 | 800
+export type AtnfSortField = 'name' | 'flux' | 'dm'
+export type AtnfConeSortField = 'distance' | AtnfSortField
+
+export interface AtnfSource {
+  id: string
+  catalog: 'atnf'
+  catalogue_version: string
+  catalogue_citation: string
+  source_id: string
+  name: string
+  aliases: string[]
+  ra_deg: number
+  dec_deg: number
+  ra_hms: string
+  dec_dms: string
+  total_flux_mjy: number | null
+  peak_flux_mjy: null
+  separation_arcmin: number | null
+  dm: number | null
+  p0_s: number | null
+  pos_unc_arcsec: number | null
+  pos_coarse: boolean
+  provisional: boolean
+  type_codes: string | null
+  is_binary: boolean
+  is_msp: boolean
+  flux_frequency_mhz: AtnfFluxFrequency
+  flux_method: AtnfFluxMethod
+  s_est_400_mjy: number | null
+  s_est_600_mjy: number | null
+  s_est_800_mjy: number | null
+  s_est_400_method: AtnfFluxMethod
+  s_est_600_method: AtnfFluxMethod
+  s_est_800_method: AtnfFluxMethod
+}
+
+export interface AtnfSearchParams {
+  name?: string
+  sort_by: AtnfSortField
+  sort_direction: SortDirection
+  limit: number
+  dm_min?: number
+  dm_max?: number
+  p0_min?: number
+  p0_max?: number
+  min_flux_mjy?: number
+  flux_frequency_mhz: AtnfFluxFrequency
+  include_coarse: boolean
+  include_provisional: boolean
+  type_code?: string
+  is_binary?: boolean
+  is_msp?: boolean
+}
+
+export interface AtnfConeSearchParams extends Omit<AtnfSearchParams, 'sort_by'> {
+  ra_deg: number
+  dec_deg: number
+  radius_arcmin: number
+  sort_by: AtnfConeSortField
+}
+
+export interface AtnfSearchResponse {
+  catalog: 'atnf'
+  catalog_release: string
+  catalogue_version: string
+  citation: string
+  coordinate_frame: 'icrs'
+  reference_frequency_mhz: AtnfFluxFrequency
+  search_mode: 'brightness' | 'cone'
+  sort_by: AtnfConeSortField
+  sort_direction: SortDirection
+  limit: number
+  name: string | null
+  center_ra_deg: number | null
+  center_dec_deg: number | null
+  radius_arcmin: number | null
+  candidate_count: number
+  result_count: number
+  sources: AtnfSource[]
+}
+
+export type ExternalCatalogSource = LofarSource | VlassSource | AtnfSource
 
 export type LofarSortField = 'total_flux' | 'peak_flux'
 export type LofarConeSortField = 'distance' | LofarSortField
@@ -181,6 +264,8 @@ export interface CustomTargetSnapshot {
   dec_deg: number
   catalog: CatalogName
   catalog_source_id: string
+  catalogue_version?: string
+  catalogue_citation?: string
   total_flux_mjy?: number
   peak_flux_mjy?: number
   morphology_code?: VlassComponentCode
@@ -196,6 +281,16 @@ export interface CustomTargetSnapshot {
   object_type_description?: string
   crossmatch_separation_arcsec?: number
   crossmatch_confidence?: 'high' | 'caution'
+  dm?: number
+  p0_s?: number
+  pos_unc_arcsec?: number
+  pos_coarse?: boolean
+  provisional?: boolean
+  type_codes?: string
+  is_binary?: boolean
+  is_msp?: boolean
+  flux_frequency_mhz?: AtnfFluxFrequency
+  flux_method?: AtnfFluxMethod
   crossmatch_catalog?: 'SIMBAD'
 }
 
@@ -277,6 +372,8 @@ export interface VisibilityTarget {
   simultaneous_visible: boolean
   catalog?: CatalogName | null
   catalog_source_id?: string | null
+  catalogue_version?: string | null
+  catalogue_citation?: string | null
   total_flux_mjy?: number | null
   peak_flux_mjy?: number | null
   morphology_code?: VlassComponentCode | null
@@ -292,6 +389,16 @@ export interface VisibilityTarget {
   object_type_description?: string | null
   crossmatch_separation_arcsec?: number | null
   crossmatch_confidence?: 'high' | 'caution' | null
+  dm?: number | null
+  p0_s?: number | null
+  pos_unc_arcsec?: number | null
+  pos_coarse?: boolean | null
+  provisional?: boolean | null
+  type_codes?: string | null
+  is_binary?: boolean | null
+  is_msp?: boolean | null
+  flux_frequency_mhz?: AtnfFluxFrequency | null
+  flux_method?: AtnfFluxMethod | null
   crossmatch_catalog?: 'SIMBAD' | null
 }
 

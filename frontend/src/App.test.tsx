@@ -1169,4 +1169,103 @@ describe('상호 가시성 인터페이스', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('produce fewer than two time points')
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('imports an ATNF pulsar with its catalogue metadata into the visibility request', async () => {
+    const user = userEvent.setup()
+    const source = {
+      id: 'atnf-j0332+5434',
+      catalog: 'atnf',
+      catalogue_version: '2.9.0',
+      catalogue_citation: 'Manchester et al. (2005), AJ 129, 1993; ATNF Pulsar Catalogue',
+      source_id: 'J0332+5434',
+      name: 'B0329+54',
+      aliases: ['J0332+5434'],
+      ra_deg: 53.25,
+      dec_deg: 54.58,
+      ra_hms: '03:32:59',
+      dec_dms: '+54:34:44',
+      total_flux_mjy: 100,
+      peak_flux_mjy: null,
+      separation_arcmin: null,
+      flux_frequency_mhz: 600,
+      flux_method: 'alpha_default',
+      s_est_400_mjy: 120,
+      s_est_400_method: 'measured',
+      s_est_600_mjy: 100,
+      s_est_600_method: 'alpha_default',
+      s_est_800_mjy: null,
+      s_est_800_method: 'none',
+      dm: 26.8,
+      p0_s: 0.7145,
+      pos_unc_arcsec: 120,
+      pos_coarse: true,
+      provisional: false,
+      type_codes: 'HE',
+      is_binary: false,
+      is_msp: false,
+    }
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input).startsWith('/api/v1/catalogs/atnf/sources')) {
+        return new Response(JSON.stringify({
+          catalog: 'atnf',
+          catalog_release: 'ATNF Pulsar Catalogue v2.9.0',
+          catalogue_version: '2.9.0',
+          citation: 'Manchester et al. (2005), AJ 129, 1993',
+          coordinate_frame: 'icrs',
+          reference_frequency_mhz: 600,
+          search_mode: 'brightness',
+          sort_by: 'flux',
+          sort_direction: 'desc',
+          limit: 100,
+          name: null,
+          center_ra_deg: null,
+          center_dec_deg: null,
+          radius_arcmin: null,
+          candidate_count: 4503,
+          result_count: 1,
+          sources: [source],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      expect(init?.method).toBe('POST')
+      return new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    })
+    render(<App />)
+
+    await user.click(screen.getByRole('tab', { name: 'Catalog Search' }))
+    await user.click(screen.getByRole('tab', { name: /ATNF/ }))
+    await user.click(screen.getByRole('button', { name: 'Search ATNF pulsars' }))
+    await user.click(await screen.findByRole('checkbox', { name: 'B0329+54: add to visibility targets' }))
+    await user.click(screen.getByRole('button', { name: 'Go to Observation Setup' }))
+
+    const importedList = screen.getByLabelText('Imported catalog target list')
+    expect(within(importedList).getByText(/ATNF.*J0332/)).toBeInTheDocument()
+    expect(within(importedList).getByText(/DM 26.800/)).toBeInTheDocument()
+    expect(within(importedList).getByText(/ATNF v2.9.0/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const payload = JSON.parse(String(fetchMock.mock.calls[1][1]?.body)) as {
+      custom_targets: Array<Record<string, unknown>>
+    }
+    expect(payload.custom_targets).toEqual([expect.objectContaining({
+      id: source.id,
+      catalog: 'atnf',
+      catalog_source_id: source.source_id,
+      catalogue_version: '2.9.0',
+      catalogue_citation: source.catalogue_citation,
+      flux_frequency_mhz: 600,
+      flux_method: 'alpha_default',
+      dm: 26.8,
+      p0_s: 0.7145,
+      pos_unc_arcsec: 120,
+      pos_coarse: true,
+      provisional: false,
+      type_codes: 'HE',
+      is_binary: false,
+      is_msp: false,
+    })])
+  })
+
 })

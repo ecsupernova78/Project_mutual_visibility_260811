@@ -25,21 +25,21 @@ npm ci
 
 ## 3. 개발 서버
 
-터미널 1에서 API를 실행합니다.
+최초 한 번 Ubuntu WSL 백엔드 환경을 준비합니다.
 
 ```powershell
 . .\scripts\activate.ps1
-npm run dev:api
+.\scripts\setup-wsl-backend.ps1
 ```
 
-터미널 2에서 웹 앱을 실행합니다.
+이후 한 터미널에서 API와 웹 앱을 함께 실행합니다. API만 필요한 경우 `npm run dev:api`를 사용하고, 그 상태에서 웹을 별도 터미널로 띄우려면 `npm run dev:web`을 사용합니다. `dev:api`와 `dev`를 동시에 실행하면 8000 포트가 충돌합니다.
 
 ```powershell
 . .\scripts\activate.ps1
 npm run dev
 ```
 
-Vite는 개발 중 `/api` 요청을 `http://127.0.0.1:8000`으로 전달합니다. API 상태 확인은 `http://127.0.0.1:8000/health`, OpenAPI 문서는 `http://127.0.0.1:8000/docs`를 사용합니다.
+Vite는 모든 로컬 네트워크 인터페이스의 5173 포트에서 실행됩니다. 같은 PC의 일반 브라우저에서는 `http://localhost:5173`, 다른 기기에서는 터미널에 출력되는 `Network` 주소를 사용합니다. `/api` 요청은 `http://127.0.0.1:8000`으로 전달됩니다. API 상태 확인은 `http://127.0.0.1:8000/health`, OpenAPI 문서는 `http://127.0.0.1:8000/docs`를 사용합니다.
 
 ## 4. 검증
 

@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.atnf import get_atnf_catalog
 from app.catalog import TARGETS
 from app.lotss_dr3 import (
     LofarCatalogBusy,
@@ -20,6 +21,9 @@ from app.lotss_dr3 import (
     filter_simbad_type_categories,
 )
 from app.models import (
+    AtnfConeSearchParameters,
+    AtnfSearchParameters,
+    AtnfSearchResponse,
     HealthResponse,
     LofarConeSearchParameters,
     LofarConeSearchResponse,
@@ -91,6 +95,26 @@ def list_targets() -> TargetCatalogResponse:
             for target in TARGETS
         ]
     )
+
+
+@app.get(
+    "/api/v1/catalogs/atnf/sources",
+    response_model=AtnfSearchResponse,
+    tags=["catalog"],
+)
+def search_atnf_sources(params: Annotated[AtnfSearchParameters, Query()]) -> AtnfSearchResponse:
+    """Browse the pinned ATNF v2.9.0 pulsar snapshot by name, flux, and pulsar properties."""
+    return get_atnf_catalog().search(params)
+
+
+@app.get(
+    "/api/v1/catalogs/atnf/cone",
+    response_model=AtnfSearchResponse,
+    tags=["catalog"],
+)
+def cone_search_atnf_sources(params: Annotated[AtnfConeSearchParameters, Query()]) -> AtnfSearchResponse:
+    """Find ATNF pulsars in a validated ICRS cone, including ecliptic-derived positions."""
+    return get_atnf_catalog().search(params)
 
 
 @app.get(

@@ -59,7 +59,7 @@ export const BURSTT_STATIONS: Record<BursttStationCode, BursttStationMetadata> =
   OGW: {
     code: 'OGW', name: 'Ogasawara (Japan)', latitude_deg: 27.0919857,
     longitude_deg: 142.21690964167, elevation_m: 261.534,
-    antenna_count: 16, antenna_rows: 2, antennas_per_row: 8,
+    antenna_count: 32, antenna_rows: 2, antennas_per_row: 16,
     spacing_ew_m: 1, spacing_ns_m: 1, frequency_min_mhz: 400,
     frequency_max_mhz: 800, rotation_deg: -5.5,
     center_east_west_deg: -18, center_north_south_deg: 0,
@@ -70,7 +70,7 @@ export const BURSTT_STATIONS: Record<BursttStationCode, BursttStationMetadata> =
     antenna_count: 16, antenna_rows: 1, antennas_per_row: 16,
     spacing_ew_m: 1, spacing_ns_m: 1, frequency_min_mhz: 300,
     frequency_max_mhz: 700, rotation_deg: -0.23,
-    center_east_west_deg: 0, center_north_south_deg: -16,
+    center_east_west_deg: 0, center_north_south_deg: -12,
   },
 }
 

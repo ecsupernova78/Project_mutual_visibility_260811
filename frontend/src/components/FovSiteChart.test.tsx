@@ -53,6 +53,42 @@ const site: FovSite = {
 }
 
 describe('FovSiteChart', () => {
+  it('renders 16 hypothesis fan strips without invented centres or corner labels', () => {
+    const pyc: FovSite = {
+      ...site, station_code: 'PYC', location_name: 'PYC',
+      beam_model: {
+        model_type: 'modeled_assignment_cells', geometry_type: 'fan_strips',
+        evidence_status: 'hypothesis', reference_frequency_mhz: 400,
+        note: 'Horizon-to-horizon EW strips, not clipped by the primary beam.',
+        beams: Array.from({ length: 16 }, (_, index) => ({
+          beam_id: index, ix_ew: index, iy_ns: 0,
+          center_east_west_deg: null, center_north_south_deg: null,
+          polygon_ew_ns_deg: [[index - 8, -89], [index - 7, -89], [index - 7, 89], [index - 8, 89], [index - 8, -89]],
+        })),
+      },
+      target_series: [{ target_id: '3c123', east_west_deg: [0, 0], north_south_deg: [0, 90], in_fov: [true, true], beam_ids: [8, 7] }],
+    }
+    const { container, rerender } = render(
+      <FovSiteChart site={pyc} targets={[targets[0]]} timeIndex={0} timeUtc="2026-11-13T00:00:00Z" />,
+    )
+    expect(container.querySelector('.fov-svg-title')).toHaveTextContent(/^PYC \(16\)$/)
+    expect(container.querySelector('.fov-svg-subtitle')).toHaveTextContent('Hypothesis')
+    expect(container.querySelector('.fov-beam-model')).toHaveAttribute('aria-label', 'PYC hypothesis digital fan beams 0 through 15')
+    expect(container.querySelectorAll('.fov-beam-cell')).toHaveLength(16)
+    expect(container.querySelectorAll('.fov-beam-number')).toHaveLength(0)
+    expect(container.querySelectorAll('.fov-beam-model text')).toHaveLength(0)
+    expect(container.querySelector('[data-beam-id="8"]')).toHaveClass('fov-beam-cell--active')
+    expect(container.querySelector('.fov-legend-beam')).toHaveTextContent('#8')
+    expect(container.querySelector('.fov-region')).toBeNull()
+    expect(container.querySelector('svg')?.innerHTML).not.toContain('NaN')
+    // The supplied closed strips include the horizon; rounding must not mark it below.
+    rerender(<FovSiteChart site={pyc} targets={[targets[0]]} timeIndex={1} timeUtc="2026-11-13T00:15:00Z" />)
+    expect(container.querySelector('.fov-legend-status')).toHaveTextContent('O')
+    expect(container.querySelector('.fov-legend-beam')).toHaveTextContent('#7')
+    expect(container.querySelector('[data-beam-id="8"]')).not.toHaveClass('fov-beam-cell--active')
+    expect(container.querySelector('[data-beam-id="7"]')).toHaveClass('fov-beam-cell--active')
+  })
+
   it('labels only the four FUS corners outside the cells and highlights the current target beam', () => {
     const beams = Array.from({ length: 256 }, (_, beamId) => {
       const ix = beamId % 16

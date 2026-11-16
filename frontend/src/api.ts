@@ -1,4 +1,7 @@
 import type {
+  AtnfConeSearchParams,
+  AtnfSearchParams,
+  AtnfSearchResponse,
   LofarConeSearchParams,
   LofarSearchParams,
   LofarSearchResponse,
@@ -16,6 +19,8 @@ const LOFAR_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/lotss-dr3/sources`
 const LOFAR_CONE_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/lotss-dr3/cone`
 const VLASS_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/vlass/sources`
 const VLASS_CONE_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/vlass/cone`
+const ATNF_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/atnf/sources`
+const ATNF_CONE_ENDPOINT = `${API_BASE_URL}/api/v1/catalogs/atnf/cone`
 const HANGUL_PATTERN = new RegExp('[\\u3131-\\u318e\\uac00-\\ud7a3]')
 const API_READY_TTL_MS = 10 * 60 * 1000
 const API_WAKE_RETRY_DELAY_MS = 4_000
@@ -333,4 +338,78 @@ export async function coneSearchVlassSources(
   }
 
   return (await response.json()) as VlassSearchResponse
+}
+
+function atnfSearchQuery(params: AtnfSearchParams | AtnfConeSearchParams) {
+  const query = new URLSearchParams({
+    sort_by: params.sort_by,
+    sort_direction: params.sort_direction,
+    limit: String(params.limit),
+    flux_frequency_mhz: String(params.flux_frequency_mhz),
+    include_coarse: String(params.include_coarse),
+    include_provisional: String(params.include_provisional),
+  })
+  const name = params.name?.trim()
+  if (name) query.set('name', name)
+  if (params.dm_min !== undefined) query.set('dm_min', String(params.dm_min))
+  if (params.dm_max !== undefined) query.set('dm_max', String(params.dm_max))
+  if (params.p0_min !== undefined) query.set('p0_min', String(params.p0_min))
+  if (params.p0_max !== undefined) query.set('p0_max', String(params.p0_max))
+  if (params.min_flux_mjy !== undefined) query.set('min_flux_mjy', String(params.min_flux_mjy))
+  if (params.type_code) query.set('type_code', params.type_code)
+  if (params.is_binary !== undefined) query.set('is_binary', String(params.is_binary))
+  if (params.is_msp !== undefined) query.set('is_msp', String(params.is_msp))
+  return query
+}
+
+async function requestAtnfSources(
+  endpoint: string,
+  query: URLSearchParams,
+  signal?: AbortSignal,
+): Promise<AtnfSearchResponse> {
+  let response: Response
+  try {
+    await waitForApiReady(signal)
+    response = await fetch(`${endpoint}?${query.toString()}`, { signal })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error
+    throw new ApiError('Unable to connect to the ATNF Pulsar Catalogue service. Please try again shortly.')
+  }
+
+  if (!response.ok) {
+    let detail = ''
+    try {
+      const body = (await response.json()) as { detail?: unknown }
+      detail = englishErrorDetail(body.detail)
+    } catch {
+      // Use a readable fallback for non-JSON responses.
+    }
+    throw new ApiError(
+      detail ||
+        (response.status >= 500
+          ? 'The ATNF pulsar search could not be completed. Please try again shortly.'
+          : 'Check the ATNF search parameters and try again.'),
+      response.status,
+    )
+  }
+
+  return (await response.json()) as AtnfSearchResponse
+}
+
+export function searchAtnfSources(
+  params: AtnfSearchParams,
+  signal?: AbortSignal,
+): Promise<AtnfSearchResponse> {
+  return requestAtnfSources(ATNF_ENDPOINT, atnfSearchQuery(params), signal)
+}
+
+export function coneSearchAtnfSources(
+  params: AtnfConeSearchParams,
+  signal?: AbortSignal,
+): Promise<AtnfSearchResponse> {
+  const query = atnfSearchQuery(params)
+  query.set('ra_deg', String(params.ra_deg))
+  query.set('dec_deg', String(params.dec_deg))
+  query.set('radius_arcmin', String(params.radius_arcmin))
+  return requestAtnfSources(ATNF_CONE_ENDPOINT, query, signal)
 }

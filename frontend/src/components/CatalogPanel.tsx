@@ -1,15 +1,17 @@
 import { useState, type KeyboardEvent } from 'react'
 
 import type { ExternalCatalogSource } from '../types'
+import { AtnfCatalogPanel } from './AtnfCatalogPanel'
 import { LofarCatalogPanel } from './LofarCatalogPanel'
 import { VlassCatalogPanel } from './VlassCatalogPanel'
 
-type CatalogProvider = 'lofar' | 'vlass'
+type CatalogProvider = 'lofar' | 'vlass' | 'atnf'
 
-const PROVIDERS: CatalogProvider[] = ['lofar', 'vlass']
+const PROVIDERS: CatalogProvider[] = ['lofar', 'vlass', 'atnf']
 const PROVIDER_TAB_IDS: Record<CatalogProvider, string> = {
   lofar: 'lofar-provider-tab',
   vlass: 'vlass-provider-tab',
+  atnf: 'atnf-provider-tab',
 }
 
 interface CatalogPanelProps {
@@ -101,6 +103,19 @@ export function CatalogPanel({
           <strong>VLASS</strong>
           <small>Epoch 1 Quick Look · 3 GHz</small>
         </button>
+        <button
+          id="atnf-provider-tab"
+          type="button"
+          role="tab"
+          aria-selected={provider === 'atnf'}
+          aria-controls="atnf-provider-panel"
+          tabIndex={provider === 'atnf' ? 0 : -1}
+          onClick={() => activateProvider('atnf')}
+          onKeyDown={handleProviderKeyDown}
+        >
+          <strong>ATNF</strong>
+          <small>Pulsars | v2.9.0</small>
+        </button>
       </nav>
 
       <LofarCatalogPanel
@@ -112,6 +127,13 @@ export function CatalogPanel({
       />
       <VlassCatalogPanel
         hidden={provider !== 'vlass'}
+        selectedSourceIds={selectedSourceIds}
+        selectedTargetCount={selectedTargetCount}
+        maximumTargetCount={maximumTargetCount}
+        onToggleSource={onToggleSource}
+      />
+      <AtnfCatalogPanel
+        hidden={provider !== 'atnf'}
         selectedSourceIds={selectedSourceIds}
         selectedTargetCount={selectedTargetCount}
         maximumTargetCount={maximumTargetCount}

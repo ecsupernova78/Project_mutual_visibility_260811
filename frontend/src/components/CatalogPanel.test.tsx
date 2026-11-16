@@ -18,16 +18,18 @@ function renderPanel() {
 }
 
 describe('CatalogPanel', () => {
-  it('provides keyboard-accessible catalog tabs while keeping both providers mounted', async () => {
+  it('provides keyboard-accessible catalog tabs while keeping all three providers mounted', async () => {
     const user = userEvent.setup()
     renderPanel()
 
     const tablist = screen.getByRole('tablist', { name: 'Radio source catalog' })
     const lofarTab = within(tablist).getByRole('tab', { name: /LOFAR DR3/ })
     const vlassTab = within(tablist).getByRole('tab', { name: /VLASS/ })
+    const atnfTab = within(tablist).getByRole('tab', { name: /ATNF/ })
     expect(lofarTab).toHaveAttribute('aria-selected', 'true')
     expect(document.getElementById('lofar-provider-panel')).not.toHaveAttribute('hidden')
     expect(document.getElementById('vlass-provider-panel')).toHaveAttribute('hidden')
+    expect(document.getElementById('atnf-provider-panel')).toHaveAttribute('hidden')
 
     lofarTab.focus()
     await user.keyboard('{ArrowRight}')
@@ -41,7 +43,11 @@ describe('CatalogPanel', () => {
     await user.keyboard('{Home}')
     expect(lofarTab).toHaveFocus()
     await user.keyboard('{End}')
-    expect(vlassTab).toHaveFocus()
+    expect(atnfTab).toHaveFocus()
+    expect(atnfTab).toHaveAttribute('aria-selected', 'true')
+    expect(document.getElementById('atnf-provider-panel')).not.toHaveAttribute('hidden')
+    await user.keyboard('{ArrowRight}')
+    expect(lofarTab).toHaveFocus()
     expect(screen.getByLabelText('VLASS component ID prefix (optional)')).toHaveValue('VLASS1QLCIR J12')
   })
 
@@ -50,11 +56,15 @@ describe('CatalogPanel', () => {
 
     const lofarPanel = document.getElementById('lofar-provider-panel')
     const vlassPanel = document.getElementById('vlass-provider-panel')
+    const atnfPanel = document.getElementById('atnf-provider-panel')
     expect(lofarPanel?.querySelectorAll('input[name="lofar-search-mode"]')).toHaveLength(2)
     expect(vlassPanel?.querySelectorAll('input[name="vlass-search-mode"]')).toHaveLength(2)
+    expect(atnfPanel?.querySelectorAll('input[name="atnf-search-mode"]')).toHaveLength(2)
     expect(document.querySelectorAll('#lofar-search-help')).toHaveLength(1)
     expect(document.querySelectorAll('#vlass-search-help')).toHaveLength(1)
+    expect(document.querySelectorAll('#atnf-search-help')).toHaveLength(1)
     expect(lofarPanel).toHaveAttribute('aria-labelledby', 'lofar-provider-tab')
     expect(vlassPanel).toHaveAttribute('aria-labelledby', 'vlass-provider-tab')
+    expect(atnfPanel).toHaveAttribute('aria-labelledby', 'atnf-provider-tab')
   })
 })

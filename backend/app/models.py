@@ -13,6 +13,10 @@ from app.catalog import TARGETS_BY_ID
 MAX_TIME_SAMPLES = 2_000
 MAX_WINDOW_HOURS = 72.0
 MAX_TARGETS_PER_REQUEST = 25
+ATNF_CATALOGUE_CITATION = (
+    "Manchester, R. N., Hobbs, G. B., Teoh, A. & Hobbs, M., AJ, 129, 1993-2006 (2005), "
+    "astro-ph/0412641; ATNF Pulsar Catalogue https://www.atnf.csiro.au/research/pulsar/psrcat"
+)
 
 Identifier = Annotated[
     str,
@@ -117,8 +121,10 @@ class CustomTarget(ApiModel):
     aliases: list[DisplayName] = Field(default_factory=list, max_length=5)
     ra_deg: float = Field(ge=0.0, lt=360.0)
     dec_deg: float = Field(ge=-90.0, le=90.0)
-    catalog: Literal["lofar_dr3", "vlass"]
+    catalog: Literal["lofar_dr3", "vlass", "atnf"]
     catalog_source_id: CatalogSourceId
+    catalogue_version: Literal["2.9.0"] | None = None
+    catalogue_citation: str | None = Field(default=None, max_length=500)
     total_flux_mjy: float | None = Field(default=None, ge=0.0)
     peak_flux_mjy: float | None = Field(default=None, ge=0.0)
     morphology_code: Literal["S", "M", "C", "E"] | None = None
@@ -135,27 +141,66 @@ class CustomTarget(ApiModel):
     duplicate_flag: int | None = Field(default=None, ge=0, le=2)
     quality_flag: int | None = Field(default=None, ge=0, le=7)
     main_sample: bool | None = None
+    flux_frequency_mhz: Literal[400, 600, 800] | None = None
+    flux_method: Literal["measured", "interp", "spindx", "extrap_two_point", "alpha_default", "none"] | None = None
+    dm: float | None = Field(default=None, ge=0.0)
+    p0_s: float | None = Field(default=None, gt=0.0)
+    pos_unc_arcsec: float | None = Field(default=None, ge=0.0)
+    pos_coarse: bool | None = None
+    provisional: bool | None = None
+    type_codes: str | None = Field(default=None, max_length=500)
+    is_binary: bool | None = None
+    is_msp: bool | None = None
 
     @field_validator("id")
     @classmethod
     def require_known_catalog_namespace(cls, value: str) -> str:
-        if not value.startswith(("lotss-dr3-", "vlass-")):
-            raise ValueError("catalog target ids must start with 'lotss-dr3-' or 'vlass-'")
+        if not value.startswith(("lotss-dr3-", "vlass-", "atnf-")):
+            raise ValueError("catalog target ids must start with 'lotss-dr3-', 'vlass-', or 'atnf-'")
         return value
 
     @model_validator(mode="after")
     def validate_crossmatch_metadata(self) -> Self:
-        required_prefix = "lotss-dr3-" if self.catalog == "lofar_dr3" else "vlass-"
+        required_prefix = {"lofar_dr3": "lotss-dr3-", "vlass": "vlass-", "atnf": "atnf-"}[self.catalog]
         if not self.id.startswith(required_prefix):
             raise ValueError(f"{self.catalog} target ids must start with '{required_prefix}'")
         if self.catalog == "lofar_dr3" and self.morphology_code == "E":
             raise ValueError("LOFAR DR3 targets do not support morphology code 'E'")
 
         vlass_quality = (self.duplicate_flag, self.quality_flag, self.main_sample)
-        if self.catalog == "lofar_dr3" and any(value is not None for value in vlass_quality):
-            raise ValueError("LOFAR DR3 targets must not contain VLASS quality metadata")
+        if self.catalog != "vlass" and any(value is not None for value in vlass_quality):
+            raise ValueError("only VLASS targets may contain VLASS quality metadata")
         if self.catalog == "vlass" and any(value is None for value in vlass_quality):
             raise ValueError("VLASS targets require duplicate_flag, quality_flag, and main_sample")
+        if self.catalog == "atnf":
+            if self.catalogue_version != "2.9.0" or self.catalogue_citation != ATNF_CATALOGUE_CITATION:
+                raise ValueError("ATNF targets require the pinned catalogue version and citation")
+            if (
+                self.morphology_code is not None
+                or self.morphology_label is not None
+                or self.morphology_description is not None
+            ):
+                raise ValueError("ATNF targets do not have radio-component morphology metadata")
+            if self.total_flux_mjy is not None and (self.flux_frequency_mhz is None or self.flux_method is None):
+                raise ValueError("ATNF flux snapshots require frequency and estimation method")
+        elif any(
+            value is not None
+            for value in (
+                self.catalogue_version,
+                self.catalogue_citation,
+                self.flux_frequency_mhz,
+                self.flux_method,
+                self.dm,
+                self.p0_s,
+                self.pos_unc_arcsec,
+                self.pos_coarse,
+                self.provisional,
+                self.type_codes,
+                self.is_binary,
+                self.is_msp,
+            )
+        ):
+            raise ValueError("ATNF pulsar metadata is only valid for ATNF targets")
 
         metadata_present = any(
             value is not None
@@ -288,17 +333,25 @@ class FovBeam(ApiModel):
     beam_id: int
     ix_ew: int
     iy_ns: int
-    center_east_west_deg: float
-    center_north_south_deg: float
+    center_east_west_deg: float | None
+    center_north_south_deg: float | None
     polygon_ew_ns_deg: list[tuple[float, float]]
 
 
 class FovBeamModel(ApiModel):
     model_type: Literal["modeled_assignment_cells"] = "modeled_assignment_cells"
+    geometry_type: Literal["cells", "fan_strips"] = "cells"
+    evidence_status: Literal["trigger_validated", "hypothesis"] = "trigger_validated"
     reference_frequency_mhz: float = 400.0
+    source_package: str = "BeamViz_SiteBeams_261113"
+    rotation_applied_deg: float = -3.0
+    validated_from_utc: str | None = "2025-03-30T00:00:00Z"
+    validated_through_utc: str | None = "2026-07-04T07:59:54Z"
     note: str = (
-        "Provisional FUS 16x16 digital-beam cells, not measured sensitivity contours. "
-        "ID=16*iy+ix and b0=-7.5 are inferred; the 3-degree rotation sign is unverified."
+        "FUS assignment-cell model from operational code, validated against triggers (99.3% ID agreement). "
+        "Sky coordinates already include -3 degree rotation; grid reference is 400 MHz, not the search band. "
+        "Validated 2025-03-30 through 2026-07-04; application outside that interval assumes the same mode. "
+        "Not measured sensitivity/FWHM contours. Active-beam masks and effective search band remain unknown."
     )
     beams: list[FovBeam]
 
@@ -307,6 +360,7 @@ class FovSite(ApiModel):
     location_id: str
     location_name: str
     station_code: BursttStationCode | None = None
+    profile_note: str | None = None
     ew_width_deg: float
     ns_width_deg: float
     center_east_west_deg: float = 0.0
@@ -346,8 +400,10 @@ class TargetVisibility(ApiModel):
     visible_intervals: list[VisibleInterval]
     max_common_altitude_deg: float
     simultaneous_visible: bool
-    catalog: Literal["lofar_dr3", "vlass"] | None = None
+    catalog: Literal["lofar_dr3", "vlass", "atnf"] | None = None
     catalog_source_id: str | None = None
+    catalogue_version: Literal["2.9.0"] | None = None
+    catalogue_citation: str | None = None
     total_flux_mjy: float | None = None
     peak_flux_mjy: float | None = None
     morphology_code: Literal["S", "M", "C", "E"] | None = None
@@ -364,6 +420,16 @@ class TargetVisibility(ApiModel):
     duplicate_flag: int | None = None
     quality_flag: int | None = None
     main_sample: bool | None = None
+    flux_frequency_mhz: Literal[400, 600, 800] | None = None
+    flux_method: Literal["measured", "interp", "spindx", "extrap_two_point", "alpha_default", "none"] | None = None
+    dm: float | None = None
+    p0_s: float | None = None
+    pos_unc_arcsec: float | None = None
+    pos_coarse: bool | None = None
+    provisional: bool | None = None
+    type_codes: str | None = None
+    is_binary: bool | None = None
+    is_msp: bool | None = None
 
 
 class LofarMorphologyDefinition(ApiModel):
@@ -661,6 +727,134 @@ class VlassConeSearchResponse(ApiModel):
     enrichment_status: Literal["complete", "partial", "unavailable"] = "complete"
     enrichment_warning: str | None = None
     morphology_codebook: list[VlassMorphologyDefinition] = Field(default_factory=list)
+
+
+AtnfFluxMethod = Literal["measured", "interp", "spindx", "extrap_two_point", "alpha_default", "none"]
+
+
+class AtnfSource(ApiModel):
+    id: TargetIdentifier
+    catalog: Literal["atnf"] = "atnf"
+    source_id: CatalogSourceId
+    catalogue_version: Literal["2.9.0"] = "2.9.0"
+    catalogue_citation: str = ATNF_CATALOGUE_CITATION
+    name: str
+    aliases: list[str] = Field(default_factory=list)
+    ra_deg: float = Field(ge=0.0, lt=360.0)
+    dec_deg: float = Field(ge=-90.0, le=90.0)
+    ra_hms: str
+    dec_dms: str
+    total_flux_mjy: float | None = Field(default=None, ge=0.0)
+    peak_flux_mjy: None = None
+    flux_frequency_mhz: Literal[400, 600, 800]
+    flux_method: AtnfFluxMethod
+    s_est_400_mjy: float | None = Field(default=None, ge=0.0)
+    s_est_400_method: AtnfFluxMethod
+    s_est_600_mjy: float | None = Field(default=None, ge=0.0)
+    s_est_600_method: AtnfFluxMethod
+    s_est_800_mjy: float | None = Field(default=None, ge=0.0)
+    s_est_800_method: AtnfFluxMethod
+    dm: float | None = Field(default=None, ge=0.0)
+    p0_s: float | None = Field(default=None, gt=0.0)
+    pos_source: Literal["equatorial", "ecliptic"]
+    pos_unc_arcsec: float | None = Field(default=None, ge=0.0)
+    pos_unc_kind: str | None = None
+    pos_coarse: bool
+    provisional: bool
+    type_codes: str | None = None
+    is_binary: bool
+    is_msp: bool
+    dist_kpc: float | None = Field(default=None, ge=0.0)
+    dist_method: str | None = None
+    discovery_survey: str | None = None
+    separation_arcmin: float | None = Field(default=None, ge=0.0)
+
+
+class AtnfFilters(ApiModel):
+    name: str | None = Field(default=None, max_length=80)
+    dm_min: float | None = Field(default=None, ge=0.0)
+    dm_max: float | None = Field(default=None, ge=0.0)
+    p0_min: float | None = Field(default=None, ge=0.0)
+    p0_max: float | None = Field(default=None, ge=0.0)
+    min_flux_mjy: float | None = Field(default=None, ge=0.0)
+    flux_frequency_mhz: Literal[400, 600, 800] = 600
+    include_coarse: bool = True
+    include_provisional: bool = True
+    type_code: str | None = Field(default=None, min_length=1, max_length=20, pattern=r"^[A-Za-z0-9_+-]+$")
+    is_binary: bool | None = None
+    is_msp: bool | None = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def empty_name_means_all_sources(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+    @field_validator("flux_frequency_mhz", mode="before")
+    @classmethod
+    def parse_query_string_frequency(cls, value: object) -> object:
+        if isinstance(value, str) and value.isdecimal():
+            return int(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_filter_ranges(self) -> Self:
+        if self.dm_min is not None and self.dm_max is not None and self.dm_min > self.dm_max:
+            raise ValueError("dm_min must not exceed dm_max")
+        if self.p0_min is not None and self.p0_max is not None and self.p0_min > self.p0_max:
+            raise ValueError("p0_min must not exceed p0_max")
+        return self
+
+
+class AtnfSearchParameters(AtnfFilters):
+    sort_by: Literal["name", "flux", "dm"] = "flux"
+    sort_direction: Literal["asc", "desc"] = "desc"
+    limit: Literal[8, 10, 25, 50, 100, 250, 500, 1000] = 100
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def parse_query_string_limit(cls, value: object) -> object:
+        if isinstance(value, str) and value.isdecimal():
+            return int(value)
+        return value
+
+
+class AtnfConeSearchParameters(AtnfFilters):
+    ra_deg: float = Field(ge=0.0, lt=360.0)
+    dec_deg: float = Field(ge=-90.0, le=90.0)
+    radius_arcmin: float = Field(gt=0.0, le=60.0)
+    sort_by: Literal["distance", "name", "flux", "dm"] = "distance"
+    sort_direction: Literal["asc", "desc"] = "asc"
+    limit: Literal[8, 10, 25, 50, 100, 250, 500, 1000] = 100
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def parse_query_string_limit(cls, value: object) -> object:
+        if isinstance(value, str) and value.isdecimal():
+            return int(value)
+        return value
+
+
+class AtnfSearchResponse(ApiModel):
+    catalog: Literal["atnf"] = "atnf"
+    catalog_release: str = "ATNF Pulsar Catalogue v2.9.0"
+    catalogue_version: Literal["2.9.0"] = "2.9.0"
+    citation: str = ATNF_CATALOGUE_CITATION
+    coordinate_frame: Literal["icrs"] = "icrs"
+    reference_frequency_mhz: Literal[400, 600, 800] = 600
+    data_mode: Literal["local_snapshot"] = "local_snapshot"
+    search_mode: Literal["brightness", "cone"]
+    center_ra_deg: float | None = None
+    center_dec_deg: float | None = None
+    radius_arcmin: float | None = None
+    name: str | None = None
+    sort_by: Literal["distance", "name", "flux", "dm"]
+    sort_direction: Literal["asc", "desc"]
+    limit: int
+    candidate_count: int = Field(ge=0)
+    result_count: int = Field(ge=0)
+    sources: list[AtnfSource]
 
 
 class CalculationMetadata(ApiModel):
