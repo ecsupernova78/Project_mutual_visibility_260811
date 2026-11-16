@@ -444,11 +444,29 @@ def _normalized_alias(value: str) -> str:
 
 def _alias_priority(value: str) -> tuple[int, bool, int, str]:
     normalized = " ".join(value.split())
-    # Prefer broadly recognized names, with radio catalogues ahead of optical
-    # aliases when both identify the same SIMBAD positional candidate.
-    prefixes = ("M ", "3C ", "3CR ", "NGC ", "IC ", "4C ", "UGC ", "PGC ", "MCG", "NAME ")
+    # Prefer recognizable catalog identifiers over position-based J names.
+    # Keep B1950 pulsar/quasar names explicit: a bare "B" is ambiguous.
+    patterns = (
+        r"^M\s*\d",
+        r"^3C\s*\d",
+        r"^3CR\s*\d",
+        r"^NGC\s*\d",
+        r"^IC\s*\d",
+        r"^4C\s*\d",
+        r"^PSR\s+B\d",
+        r"^B2(?:\.\d+)?\s+\d",
+        r"^B3(?:VLA)?\s+\d",
+        r"^QSO\s+B\d",
+        r"^PKS\s+\d",
+        r"^MRK\s+\d",
+        r"^UGC\s*\d",
+        r"^PGC\s*\d",
+        r"^MCG",
+        r"^NAME\s+",
+    )
     rank = next(
-        (index for index, prefix in enumerate(prefixes) if normalized.upper().startswith(prefix)), len(prefixes)
+        (index for index, pattern in enumerate(patterns) if re.match(pattern, normalized, re.IGNORECASE)),
+        len(patterns),
     )
     return rank, ".0" in normalized, len(normalized), normalized.casefold()
 
@@ -588,6 +606,9 @@ async def _counterpart_details(
         f"WHERE b.main_id IN ({quoted_main_ids}) AND ("
         "i.id LIKE 'M %' OR i.id LIKE 'NGC %' OR i.id LIKE 'IC %' OR "
         "i.id LIKE '3C %' OR i.id LIKE '3CR %' OR i.id LIKE '4C %' OR "
+        "i.id LIKE 'PSR B%' OR i.id LIKE 'B2 %' OR i.id LIKE 'B2.%' OR "
+        "i.id LIKE 'B3 %' OR i.id LIKE 'B3VLA %' OR i.id LIKE 'QSO B%' OR "
+        "i.id LIKE 'PKS %' OR i.id LIKE 'Mrk %' OR "
         "i.id LIKE 'UGC %' OR i.id LIKE 'PGC %' OR i.id LIKE 'MCG%' OR i.id LIKE 'NAME %')"
     )
     type_codes = sorted({match.object_type_code for match in matches.values() if match.object_type_code})
@@ -643,13 +664,9 @@ def _apply_counterparts(
         if match is None:
             enriched.append(source)
             continue
-        raw_aliases = (
-            sorted(aliases_by_main_id.get(match.main_id, []), key=_alias_priority)
-            if aliases_by_main_id is not None
-            else []
-        )
+        raw_aliases = aliases_by_main_id.get(match.main_id, []) if aliases_by_main_id is not None else []
         counterpart_aliases = []
-        for alias in [*raw_aliases, match.main_id]:
+        for alias in sorted([*raw_aliases, match.main_id], key=_alias_priority):
             normalized = _normalized_alias(alias)
             if normalized not in counterpart_aliases:
                 counterpart_aliases.append(normalized)
@@ -657,7 +674,9 @@ def _apply_counterparts(
         if counterpart_id not in counterpart_aliases:
             counterpart_aliases.append(counterpart_id)
         if len(counterpart_aliases) > 5:
-            counterpart_aliases = [*counterpart_aliases[:4], counterpart_id]
+            counterpart_aliases = counterpart_aliases[:5]
+            if counterpart_id not in counterpart_aliases:
+                counterpart_aliases[-1] = counterpart_id
         display_name = counterpart_aliases[0] if counterpart_aliases else _normalized_alias(match.main_id)
         unified_aliases = [source.source_id]
         unified_aliases.extend(alias for alias in counterpart_aliases if alias != display_name)

@@ -452,6 +452,8 @@ def test_simbad_enrichment_prefers_catalog_alias_and_preserves_counterpart_prove
         form = parse_qs(request.content.decode(), keep_blank_values=True)
         query = form["QUERY"][0]
         if "FROM basic" in query:
+            for prefix in ("PSR B%", "B2 %", "B2.%", "B3 %", "B3VLA %", "QSO B%", "PKS %", "Mrk %"):
+                assert f"i.id LIKE '{prefix}'" in query
             return httpx.Response(
                 200,
                 text="main_id,alias_id\nNAME Per B,4C 29.14\nNAME Per B,3C 123\n",
@@ -477,6 +479,52 @@ def test_simbad_enrichment_prefers_catalog_alias_and_preserves_counterpart_prove
     assert enriched.object_type_description == "Seyfert galaxy"
     assert enriched.crossmatch_separation_arcsec == 0.935486
     assert enriched.crossmatch_confidence == "high"
+
+
+def test_simbad_enrichment_uses_b_catalog_alias_from_tap_response() -> None:
+    source = LofarSource(
+        id="lotss-dr3-b2-naming",
+        source_id="ILTJ092703.00+390218.0",
+        name="ILTJ092703.00+390218.0",
+        ra_deg=141.7625,
+        dec_deg=39.038333,
+        ra_hms="09:27:03.00",
+        dec_dms="+39:02:18.00",
+        total_flux_mjy=100.0,
+        peak_flux_mjy=50.0,
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "cdsxmatch" in request.url.host:
+            return httpx.Response(
+                200,
+                text=(
+                    "angDist,source_id,main_id,otype,main_type\n"
+                    "0.5,ILTJ092703.00+390218.0,JVAS J0927+3902,Rad,Radio source\n"
+                ),
+            )
+        query = parse_qs(request.content.decode(), keep_blank_values=True)["QUERY"][0]
+        if "FROM basic" in query:
+            assert "i.id LIKE 'B2 %'" in query
+            return httpx.Response(
+                200,
+                text=("main_id,alias_id\nJVAS J0927+3902,B3 0923+392\nJVAS J0927+3902,B2 0923+39\n"),
+            )
+        assert "FROM otypedef" in query
+        return httpx.Response(200, text="otype,description\nRad,Radio source\n")
+
+    async def execute() -> tuple[list[LofarSource], str, str | None]:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await _enrich_sources([source], client)
+
+    sources, status, warning = asyncio.run(execute())
+
+    assert status == "complete"
+    assert warning is None
+    assert sources[0].name == "B2 0923+39"
+    assert sources[0].counterpart_name == "JVAS J0927+3902"
+    assert sources[0].counterpart_aliases[:2] == ["B2 0923+39", "B3 0923+392"]
+    assert sources[0].aliases[0] == source.source_id
 
 
 def test_simbad_enrichment_prefers_3c_radio_name_over_ngc_alias() -> None:
@@ -508,6 +556,51 @@ def test_simbad_enrichment_prefers_3c_radio_name_over_ngc_alias() -> None:
     assert enriched.name == "3C84"
     assert "NGC1275" in enriched.aliases
     assert enriched.counterpart_name == "NGC1275"
+    assert enriched.crossmatch_catalog == "SIMBAD"
+
+
+@pytest.mark.parametrize(
+    ("main_id", "aliases", "expected_name"),
+    [
+        ("3C 274", ["NGC 4486", "M 87"], "M87"),
+        ("M 87", ["3C 274", "NGC 4486", "IC 3500", "B2 1228+12", "UGC 7654", "PGC 41361"], "M87"),
+        ("PSR J0332+5434", ["PSR B0329+54"], "PSR B0329+54"),
+        ("QSO J1635+3808", ["QSO B1633+3814"], "QSO B1633+3814"),
+        ("JVAS J0927+3902", ["B3 0923+392", "B2 0923+39"], "B2 0923+39"),
+        ("NVSS J163500+380800", ["PKS 1633+382"], "PKS 1633+382"),
+        ("2MASX J11000000+0000000", ["Mrk 421"], "Mrk 421"),
+        ("PSR J0332+5434", [], "PSR J0332+5434"),
+    ],
+)
+def test_simbad_name_prefers_well_known_identifiers_over_j_names(
+    main_id: str, aliases: list[str], expected_name: str
+) -> None:
+    source = LofarSource(
+        id="lotss-dr3-naming",
+        source_id="ILTJ033259.33+543445.0",
+        name="ILTJ033259.33+543445.0",
+        ra_deg=53.247208,
+        dec_deg=54.579167,
+        ra_hms="03:32:59.33",
+        dec_dms="+54:34:45.00",
+        total_flux_mjy=100.0,
+        peak_flux_mjy=50.0,
+    )
+    match = _Counterpart(
+        main_id=main_id,
+        object_type_code=None,
+        object_type_label=None,
+        separation_arcsec=0.5,
+    )
+
+    [enriched] = _apply_counterparts([source], {source.source_id: match}, {main_id: aliases}, {})
+
+    assert enriched.name == expected_name
+    assert enriched.counterpart_aliases[0] == expected_name
+    assert len(enriched.counterpart_aliases) <= 5
+    assert len(enriched.counterpart_aliases) == len(set(enriched.counterpart_aliases))
+    assert enriched.counterpart_name in enriched.counterpart_aliases
+    assert enriched.aliases[0] == source.source_id
     assert enriched.crossmatch_catalog == "SIMBAD"
 
 
