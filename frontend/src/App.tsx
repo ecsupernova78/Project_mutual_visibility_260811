@@ -62,6 +62,7 @@ const CATALOG_TARGETS: CatalogTarget[] = [
   { id: '3c147', name: '3C147', coordinate: '05h 42m · +49° 51′' },
   { id: '3c48', name: '3C48', coordinate: '01h 37m · +33° 09′' },
 ]
+const DEFAULT_BURSTT_TARGET_IDS = ['b0329_54', 'crab_pulsar', '3c48', '3c147']
 
 function initialUtcInput() {
   const date = new Date()
@@ -243,6 +244,7 @@ function LocationEditor({
   selectionOrder,
   selected,
   selectionDisabled,
+  compact = false,
   onToggle,
   onChange,
 }: {
@@ -251,10 +253,28 @@ function LocationEditor({
   selectionOrder: number | null
   selected: boolean
   selectionDisabled: boolean
+  compact?: boolean
   onToggle: () => void
   onChange: (next: ObserverLocation) => void
 }) {
   const prefix = `location-${index}`
+  if (compact) {
+    const stationCode = stationCodeForLocation(location)
+    return (
+      <label className={`burstt-site-option ${selected ? 'is-selected' : ''}`}>
+        <input
+          type="checkbox"
+          checked={selected}
+          disabled={selectionDisabled}
+          aria-label={`Include ${location.name} in the observation`}
+          onChange={onToggle}
+        />
+        <span className="burstt-site-option-check" aria-hidden="true">✓</span>
+        <span className="burstt-site-option-name">{stationCode ?? location.name}</span>
+        {selectionOrder !== null && <small>{selectionOrder}</small>}
+      </label>
+    )
+  }
   return (
     <section
       className={`location-card ${selected ? 'is-selected' : 'is-unselected'}`}
@@ -753,6 +773,10 @@ export default function App() {
   const [centerTime, setCenterTime] = useState(initialUtcInput)
   const [hoursBefore, setHoursBefore] = useState(6)
   const [hoursAfter, setHoursAfter] = useState(6)
+  const tabDefaults = useRef({
+    visibility: { hoursBefore: 6, hoursAfter: 6, targetIds: new Set(CATALOG_TARGETS.map((target) => target.id)) },
+    burstt: { hoursBefore: 12, hoursAfter: 12, targetIds: new Set(DEFAULT_BURSTT_TARGET_IDS) },
+  })
   const [stepMinutes, setStepMinutes] = useState(15)
   const [minimumAltitude, setMinimumAltitude] = useState(15)
   const [selectedTargetIds, setSelectedTargetIds] = useState(
@@ -1013,6 +1037,15 @@ export default function App() {
 
   const activateTab = (nextTab: AppTab, moveFocus = false) => {
     if ((nextTab === 'visibility' || nextTab === 'burstt') && nextTab !== analysisTab) {
+      tabDefaults.current[analysisTab] = {
+        hoursBefore,
+        hoursAfter,
+        targetIds: new Set(selectedTargetIds),
+      }
+      const nextDefaults = tabDefaults.current[nextTab]
+      setHoursBefore(nextDefaults.hoursBefore)
+      setHoursAfter(nextDefaults.hoursAfter)
+      setSelectedTargetIds(new Set(nextDefaults.targetIds))
       invalidateResults()
       setAnalysisTab(nextTab)
     }
@@ -1116,7 +1149,7 @@ export default function App() {
                   Manage Sites
                 </button>
               </div>
-              <div className="locations-stack">
+              <div className={`locations-stack ${analysisTab === 'burstt' ? 'burstt-location-options' : ''}`}>
                 {locations.map((location, index) => (
                   <LocationEditor
                     key={location.id}
@@ -1130,6 +1163,7 @@ export default function App() {
                       !selectedLocationIds.has(location.id)
                       && selectedLocationIds.size >= MAXIMUM_SELECTED_SITES
                     }
+                    compact={analysisTab === 'burstt'}
                     onToggle={() => toggleLocation(location.id)}
                     onChange={updateLocation}
                   />

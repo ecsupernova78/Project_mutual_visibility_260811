@@ -83,7 +83,7 @@ SIMBAD_TYPE_CATEGORY_ORDER: tuple[SimbadTypeCategory, ...] = (
     "radio_source",
 )
 
-BursttStationCode = Literal["FUS", "LTN", "GRN", "KMN", "OGW", "PYC"]
+BursttStationCode = Literal["FUS", "LTN", "GRN", "KMN", "OGW", "PYC", "GBD", "PHL", "FUG"]
 
 
 class ApiModel(BaseModel):

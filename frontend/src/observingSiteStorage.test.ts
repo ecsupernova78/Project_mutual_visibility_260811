@@ -25,12 +25,40 @@ describe('observing-site storage', () => {
     const state = loadObservingSiteState(memoryStorage())
 
     expect(state.locations).toEqual(DEFAULT_OBSERVING_SITES)
-    expect(state.locations).toHaveLength(8)
+    expect(state.locations).toHaveLength(10)
     expect(state.locations.map((site) => site.burstt_station_code).filter(Boolean)).toEqual([
-      'FUS', 'LTN', 'GRN', 'KMN', 'OGW', 'PYC',
+      'PYC', 'FUS', 'LTN', 'GRN', 'KMN', 'OGW', 'GBD', 'PHL', 'FUG',
     ])
     expect([...state.selectedLocationIds]).toEqual(['narrabri', 'pyeongchang'])
     expect(state.storageStatus).toBe('missing')
+  })
+
+  it('upgrades saved station coordinates once and retains later user edits', () => {
+    const oldPyc = { ...DEFAULT_OBSERVING_SITES[1], latitude_deg: 37.36889, longitude_deg: 128.39028, elevation_m: 510 }
+    const oldFus = { ...DEFAULT_OBSERVING_SITES[2], latitude_deg: 24.75647, longitude_deg: 121.58164, elevation_m: 0 }
+    const storage = memoryStorage(JSON.stringify({
+      version: 2,
+      locations: [DEFAULT_OBSERVING_SITES[0], oldPyc, oldFus, {
+        id: 'site-custom', name: 'Custom Site', latitude_deg: 1, longitude_deg: 2, elevation_m: 3,
+      }],
+      selected_location_ids: ['pyeongchang', 'fushan'],
+    }))
+    const upgraded = loadObservingSiteState(storage)
+    expect(upgraded.locations.find((site) => site.id === 'pyeongchang')).toMatchObject({
+      latitude_deg: 37.53410008889, longitude_deg: 128.44857061389, elevation_m: 545.067,
+    })
+    expect(upgraded.locations.find((site) => site.id === 'fushan')).toMatchObject({
+      latitude_deg: 24.75649349722, longitude_deg: 121.58164468611, elevation_m: 642.341,
+    })
+    expect(upgraded.locations.map((site) => site.burstt_station_code).filter(Boolean)).toHaveLength(9)
+    expect(upgraded.locations.find((site) => site.id === 'site-custom')).toMatchObject({
+      latitude_deg: 1, longitude_deg: 2, elevation_m: 3,
+    })
+    const edited = upgraded.locations.map((site) => site.id === 'fushan'
+      ? { ...site, elevation_m: 643 } : site)
+    expect(saveObservingSiteState(edited, upgraded.selectedLocationIds, storage)).toBe('saved')
+    expect(JSON.parse(storage.value() ?? '{}').version).toBe(3)
+    expect(loadObservingSiteState(storage).locations.find((site) => site.id === 'fushan')?.elevation_m).toBe(643)
   })
 
   it('restores custom sites and drops duplicate or unavailable selections', () => {

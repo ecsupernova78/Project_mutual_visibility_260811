@@ -44,7 +44,7 @@ describe('observing-site geometry', () => {
       'narrabri-pyeongchang',
     ])
     expect(pairs[0].distanceKm).toBeCloseTo(6820.938, 3)
-    expect(pairs[1].distanceKm).toBeCloseTo(1543.931, 3)
-    expect(pairs[2].distanceKm).toBeCloseTo(7848.135, 3)
+    expect(pairs[1].distanceKm).toBeCloseTo(1562.660, 3)
+    expect(pairs[2].distanceKm).toBeCloseTo(7863.743, 3)
   })
 })

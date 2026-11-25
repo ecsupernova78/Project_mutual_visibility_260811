@@ -243,7 +243,7 @@ def calculate_visibility(request: VisibilityRequest) -> VisibilityResponse:
                     ns_width_deg=ns_width_deg,
                     center_east_west_deg=station.center_east_west_deg if station else 0.0,
                     center_north_south_deg=station.center_north_south_deg if station else 0.0,
-                    rotation_deg=station.rotation_deg if station else 0.0,
+                    rotation_deg=station.rotation_deg if station and station.rotation_deg is not None else 0.0,
                     antenna_count=station.antenna_count if station else None,
                     antenna_rows=station.antenna_rows if station else None,
                     antennas_per_row=station.antennas_per_row if station else None,

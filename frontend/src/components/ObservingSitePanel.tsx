@@ -409,10 +409,14 @@ export function ObservingSitePanel({
                         </dl>
                         {station && (
                           <p className="saved-site-station-meta">
-                            {station.antenna_count} antennas ({station.antenna_rows} × {station.antennas_per_row}) ·
-                            spacing EW {station.spacing_ew_m} m / NS {station.spacing_ns_m} m ·
-                            {station.frequency_min_mhz}–{station.frequency_max_mhz} MHz ·
-                            rotation {station.rotation_deg}°
+                            {station.antenna_count} antennas
+                            {station.antenna_rows != null && station.antennas_per_row != null
+                              ? ` (${station.antenna_rows} × ${station.antennas_per_row})` : ''}
+                            {station.spacing_ew_m != null && station.spacing_ns_m != null
+                              ? ` · spacing EW ${station.spacing_ew_m} m / NS ${station.spacing_ns_m} m` : ''}
+                            {station.frequency_min_mhz != null && station.frequency_max_mhz != null
+                              ? ` · ${station.frequency_min_mhz}–${station.frequency_max_mhz} MHz` : ''}
+                            {station.rotation_deg == null ? ' · orientation unrecorded' : ` · rotation ${station.rotation_deg}°`}
                             {stationCode === 'PYC' ? ' \u00b7 approximate tilt 12\u00b0 S' : ''}
                             {stationCode === 'OGW' ? ' \u00b7 modeled beams; pointing unknown' : ''}
                             {stationCode === 'LTN' ? ' \u00b7 EW beam grid partly validated' : ''}

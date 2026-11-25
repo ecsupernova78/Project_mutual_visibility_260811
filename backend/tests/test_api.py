@@ -191,7 +191,7 @@ def test_fus_model_assigns_all_256_center_directions_to_their_numbered_cells() -
     assert grid.beam_ids(np.array([-1.0, 20.0]), np.array([0.0, 90.0])).tolist() == [-1, -1]
 
 
-def test_six_burstt_station_profiles_and_fov_masks(client: TestClient, visibility_payload: dict) -> None:
+def test_nine_burstt_station_profiles_and_fov_masks(client: TestClient, visibility_payload: dict) -> None:
     surveyed_positions = {
         "FUS": (24.75649349722, 121.58164468611, 642.341),
         "LTN": (23.71457841944, 120.82440456389, 882.641),
@@ -199,14 +199,20 @@ def test_six_burstt_station_profiles_and_fov_masks(client: TestClient, visibilit
         "KMN": (24.43977323333, 118.34267574167, 48.568),
         "OGW": (27.0919857, 142.21690964167, 261.534),
         "PYC": (37.53410008889, 128.44857061389, 545.067),
+        "GBD": (13.60091666667, 77.42641666667, 750),
+        "PHL": (19.25011111111, -155.46827777778, 1760),
+        "FUG": (25.29752777778, 121.53788888889, 20),
     }
     expected = {
         "FUS": (256, 16, 16, 1.0, 0.5, 300, 700, 60, 90, -3.0, 0, 0),
         "LTN": (64, 4, 16, 1.0, 2.0, 300, 700, 70, 80, 0.5, 0, 0),
         "GRN": (64, 4, 16, 1.0, 1.0, 400, 800, 60, 90, 1.7, 0, 0),
-        "KMN": (16, 1, 16, 1.0, 1.0, 300, 700, 60, 90, 0.0715, 0, 0),
-        "OGW": (32, 2, 16, 0.833333, 1.0, 300, 700, 60, 90, -26.9, 0, 0),
+        "KMN": (32, None, None, None, None, 300, 700, 60, 90, 0.0715, 0, 0),
+        "OGW": (32, 2, 16, 0.833333, 1.0, 300, 700, 60, 90, -5.5, 0, 0),
         "PYC": (16, 1, 16, 1.0, 1.0, 300, 700, 60, 90, -0.23, 0, -12),
+        "GBD": (16, None, None, None, None, None, None, 60, 90, 0, 0, 0),
+        "PHL": (8, None, None, None, None, None, None, 60, 90, 0, 0, 0),
+        "FUG": (16, None, None, None, None, None, None, 60, 90, 0, 0, 0),
     }
     payload = deepcopy(visibility_payload)
     payload.update(
@@ -239,7 +245,8 @@ def test_six_burstt_station_profiles_and_fov_masks(client: TestClient, visibilit
         code = site["station_code"]
         station = BURSTT_STATIONS[code]
         assert (station.latitude_deg, station.longitude_deg, station.elevation_m) == surveyed_positions[code]
-        assert station.antenna_count == station.antenna_rows * station.antennas_per_row
+        if station.antenna_rows is not None and station.antennas_per_row is not None:
+            assert station.antenna_count == station.antenna_rows * station.antennas_per_row
         assert (
             site["antenna_count"],
             site["antenna_rows"],

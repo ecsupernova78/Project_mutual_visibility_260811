@@ -34,6 +34,7 @@ class _SiteMode:
     ns_open_to_horizon: bool
     evidence_status: str
     note: str
+    source_rotation_deg: float | None = None
 
 
 _LTN = _SiteMode(
@@ -61,7 +62,7 @@ _OGW = _SiteMode(
     site="OGW",
     mode="OGW32_MODEL_b0ew-7.5_ref400MHz_ns2_BFM2default",
     evidence_type="model_from_config_and_code_defaults_unvalidated",
-    rotation_deg=-26.9,
+    rotation_deg=-5.5,
     n_ns=2,
     ew_step=_C_M_S / 400e6 / (16 * 0.833333),
     ew_offset=-7.5,
@@ -73,8 +74,11 @@ _OGW = _SiteMode(
         "defaults only; operational beam count, steering, antenna positions, "
         "and trigger IDs are unverified. The documented 18 degree west tilt "
         "belongs to the older OGW-16 mode and is not applied here. NS cells "
-        "extend to the horizon. Polygons are not measured sensitivity or FWHM."
+        "extend to the horizon. The supplied polygons used -26.9 degrees; "
+        "they are rotated to the GNSS CSV's -5.5 degrees. Polygons are not "
+        "measured sensitivity or FWHM."
     ),
+    source_rotation_deg=-26.9,
 )
 
 
@@ -130,6 +134,8 @@ class SiteBeamGrid:
 
 
 def _load_grid(config: _SiteMode) -> SiteBeamGrid:
+    source_rotation = config.source_rotation_deg if config.source_rotation_deg is not None else config.rotation_deg
+    rotation_delta = config.rotation_deg - source_rotation
     with (_DATA_DIRECTORY / f"{config.site}_beam_centers_model.csv").open(newline="", encoding="utf-8-sig") as handle:
         centers = list(csv.DictReader(handle))
     with (_DATA_DIRECTORY / f"{config.site}_beam_cells_model.csv").open(newline="", encoding="utf-8-sig") as handle:
@@ -154,7 +160,7 @@ def _load_grid(config: _SiteMode) -> SiteBeamGrid:
         azimuth, altitude = float(row["az_deg"]), float(row["el_deg"])
         if not (0 <= azimuth <= 360 and 0 <= altitude <= 90):
             raise ValueError(f"{config.site} cell vertex is outside the geometric sky")
-        polygons[beam_id].append(_project_az_el(azimuth, altitude))
+        polygons[beam_id].append(_project_az_el((azimuth - rotation_delta) % 360, altitude))
 
     beams: list[FovBeam] = []
     l_centers: list[float] = []
@@ -168,7 +174,7 @@ def _load_grid(config: _SiteMode) -> SiteBeamGrid:
             or row["enabled"] != ""
             or int(row["beam_id"]) != beam_id
             or beam_id != _N_EW * iy + ix
-            or float(row["rotation_applied_deg"]) != config.rotation_deg
+            or float(row["rotation_applied_deg"]) != source_rotation
             or not 0 <= ix < _N_EW
             or not 0 <= iy < config.n_ns
         ):
@@ -182,7 +188,7 @@ def _load_grid(config: _SiteMode) -> SiteBeamGrid:
         ):
             raise ValueError(f"{config.site} array coordinates differ from the documented model")
         azimuth, altitude = float(row["az_deg"]), float(row["el_deg"])
-        rotation = np.deg2rad(config.rotation_deg)
+        rotation = np.deg2rad(source_rotation)
         expected_east = lp * np.cos(rotation) - mp * np.sin(rotation)
         expected_north = lp * np.sin(rotation) + mp * np.cos(rotation)
         sky_east = np.cos(np.deg2rad(altitude)) * np.sin(np.deg2rad(azimuth))
@@ -195,7 +201,7 @@ def _load_grid(config: _SiteMode) -> SiteBeamGrid:
             l_centers.append(lp)
         if ix == 0:
             m_centers.append(mp)
-        x, y = _project_az_el(azimuth, altitude)
+        x, y = _project_az_el((azimuth - rotation_delta) % 360, altitude)
         beams.append(
             FovBeam(
                 beam_id=beam_id,

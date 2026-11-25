@@ -89,7 +89,6 @@ describe('상호 가시성 인터페이스', () => {
     const visibility = within(visibilityPanel)
 
     expect(visibility.getByDisplayValue('Narrabri (Aus)')).toBeInTheDocument()
-    expect(visibility.getByDisplayValue('Pyeongchang (Kor)')).toBeInTheDocument()
     expect(visibility.getByDisplayValue('Fushan (Taiwan)')).toBeInTheDocument()
     expect(visibility.getByDisplayValue('Kinmen (Taiwan)')).toBeInTheDocument()
     expect(visibility.getByDisplayValue('Ogasawara (Japan)')).toBeInTheDocument()
@@ -97,17 +96,17 @@ describe('상호 가시성 인터페이스', () => {
     expect(screen.getByRole('heading', { name: 'Observation Setup' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: /Reference Time UTC/ })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: /Target Selection/ })).toBeInTheDocument()
-    expect(visibility.getAllByText('Latitude (N: + / S: −)')).toHaveLength(8)
-    expect(visibility.getAllByText('Longitude (E: + / W: −)')).toHaveLength(8)
+    expect(visibility.getAllByText('Latitude (N: + / S: −)')).toHaveLength(10)
+    expect(visibility.getAllByText('Longitude (E: + / W: −)')).toHaveLength(10)
     expect(screen.getByRole('spinbutton', { name: 'Narrabri (Aus) latitude (N: + / S: −)' })).toBeInTheDocument()
-    expect(screen.getByRole('spinbutton', { name: 'Pyeongchang (Kor) longitude (E: + / W: −)' })).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Pyeongchang (Kor) · PYC longitude (E: + / W: −)' })).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: 'Fushan (Taiwan) elevation' })).toBeDisabled()
     expect(screen.queryByText('관측지 A')).not.toBeInTheDocument()
     expect(screen.queryByText('관측지 B')).not.toBeInTheDocument()
     expect(screen.queryByText('관측지 C')).not.toBeInTheDocument()
     expect(screen.queryByText('첫 번째 관측 계획')).not.toBeInTheDocument()
     expect(screen.queryByText(/원하는 관측지를 골라/)).not.toBeInTheDocument()
-    expect(visibility.getAllByRole('checkbox')).toHaveLength(17)
+    expect(visibility.getAllByRole('checkbox')).toHaveLength(19)
     expect(screen.getByRole('tab', { name: /Observing Sites/ })).toHaveAttribute(
       'aria-controls',
       'observing-sites-panel',
@@ -121,6 +120,23 @@ describe('상호 가시성 인터페이스', () => {
     expect(screen.getByLabelText('Include Fushan (Taiwan) in the observation')).not.toBeChecked()
     expect(screen.queryByText(/Elevation defaults to 0 m/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Plot Altitude-Time' })).toBeEnabled()
+  })
+
+  it('starts BURSTT FoV with four sources, a 12-hour window, and compact site choices', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('tab', { name: 'BURSTT FoV' }))
+    const panel = screen.getByRole('tabpanel', { name: 'BURSTT FoV' })
+    expect(panel.querySelector('#hours-before')).toHaveValue(12)
+    expect(panel.querySelector('#hours-after')).toHaveValue(12)
+    const targets = within(panel).getByRole('list', { name: 'Examples of Radio sources' })
+    expect(within(targets).getAllByRole('listitem').filter((item) =>
+      (item.querySelector('input') as HTMLInputElement).checked,
+    ).map((item) => item.querySelector('b')?.textContent)).toEqual([
+      'B0329+54 pulsar', 'Crab pulsar', '3C147', '3C48',
+    ])
+    expect(panel.querySelectorAll('.burstt-site-option')).toHaveLength(10)
+    expect(within(panel).queryByText('Latitude (N: + / S: \u2212)')).not.toBeInTheDocument()
   })
 
   it('supports keyboard navigation to the observing-site tab', async () => {
@@ -352,7 +368,7 @@ describe('상호 가시성 인터페이스', () => {
     })
     expect(payload.locations).toEqual([
       expect.objectContaining({ latitude_deg: -30.31667, longitude_deg: 149.76667 }),
-      expect.objectContaining({ latitude_deg: 37.36889, longitude_deg: 128.39028 }),
+      expect.objectContaining({ latitude_deg: 37.53410008889, longitude_deg: 128.44857061389 }),
     ])
     expect(String(payload.center_time_utc)).toMatch(/Z$/)
 
@@ -1047,7 +1063,6 @@ describe('상호 가시성 인터페이스', () => {
     render(<App />)
 
     await user.click(screen.getByLabelText('Include Ogasawara (Japan) in the observation'))
-    await user.click(screen.getByLabelText('Include Pyeongchang (Kor) · PYC in the observation'))
     await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
@@ -1059,10 +1074,10 @@ describe('상호 가시성 인터페이스', () => {
       latitude_deg: 27.0919857, longitude_deg: 142.21690964167, elevation_m: 261.534,
     }))
     expect(payload.locations).toContainEqual(expect.objectContaining({
-      id: 'burstt-pyc', burstt_station_code: 'PYC',
+      id: 'pyeongchang', burstt_station_code: 'PYC',
       latitude_deg: 37.53410008889, longitude_deg: 128.44857061389, elevation_m: 545.067,
     }))
-    expect(payload.locations[1]).not.toHaveProperty('burstt_station_code')
+    expect(payload.locations[0]).not.toHaveProperty('burstt_station_code')
   })
 
   it('제외한 관측지의 잘못된 입력은 선택된 관측지 계산을 막지 않는다', async () => {
@@ -1116,7 +1131,7 @@ describe('상호 가시성 인터페이스', () => {
     )
     render(<App />)
 
-    await user.click(screen.getByLabelText('Include Pyeongchang (Kor) in the observation'))
+    await user.click(screen.getByLabelText('Include Pyeongchang (Kor) · PYC in the observation'))
     await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     expect(await screen.findByRole('img', { name: /3C123 altitude–time chart/ })).toBeInTheDocument()
@@ -1143,7 +1158,7 @@ describe('상호 가시성 인터페이스', () => {
     render(<App />)
 
     await user.click(screen.getByLabelText('Include Narrabri (Aus) in the observation'))
-    await user.click(screen.getByLabelText('Include Pyeongchang (Kor) in the observation'))
+    await user.click(screen.getByLabelText('Include Pyeongchang (Kor) · PYC in the observation'))
     await user.click(screen.getByRole('button', { name: 'Plot Altitude-Time' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Select at least one observation site')

@@ -19,23 +19,23 @@ class BursttStation:
     longitude_deg: float
     elevation_m: float
     antenna_count: int
-    antenna_rows: int
-    antennas_per_row: int
-    spacing_ew_m: float
-    spacing_ns_m: float
-    frequency_min_mhz: float
-    frequency_max_mhz: float
+    antenna_rows: int | None
+    antennas_per_row: int | None
+    spacing_ew_m: float | None
+    spacing_ns_m: float | None
+    frequency_min_mhz: float | None
+    frequency_max_mhz: float | None
     ew_width_deg: float
     ns_width_deg: float
-    rotation_deg: float
+    rotation_deg: float | None
     center_east_west_deg: float = 0.0
     center_north_south_deg: float = 0.0
     profile_note: str | None = None
 
 
-# Position, layout, frequency limits and array rotation transcribed from the
-# user's BURSTTStations.json and BeamViz_SiteBeams_261113_new/stations.json.
-# Operational IP addresses, server names and paths are intentionally excluded.
+# GNSS positioning CSV is authoritative for coordinates, antenna counts and
+# array orientation. Other layout/band fields retain the prior model when
+# available. Operational addresses, server names and paths are excluded.
 BURSTT_STATIONS: dict[str, BursttStation] = {
     "FUS": BursttStation(
         code="FUS",
@@ -94,11 +94,11 @@ BURSTT_STATIONS: dict[str, BursttStation] = {
         latitude_deg=24.43977323333,
         longitude_deg=118.34267574167,
         elevation_m=48.568,
-        antenna_count=16,
-        antenna_rows=1,
-        antennas_per_row=16,
-        spacing_ew_m=1.0,
-        spacing_ns_m=1.0,
+        antenna_count=32,
+        antenna_rows=None,
+        antennas_per_row=None,
+        spacing_ew_m=None,
+        spacing_ns_m=None,
         frequency_min_mhz=300,
         frequency_max_mhz=700,
         ew_width_deg=60,
@@ -124,7 +124,7 @@ BURSTT_STATIONS: dict[str, BursttStation] = {
         frequency_max_mhz=700,
         ew_width_deg=60,
         ns_width_deg=90,
-        rotation_deg=-26.9,
+        rotation_deg=-5.5,
     ),
     "PYC": BursttStation(
         code="PYC",
@@ -147,5 +147,56 @@ BURSTT_STATIONS: dict[str, BursttStation] = {
         ns_width_deg=90,
         rotation_deg=-0.23,
         center_north_south_deg=-12.0,
+    ),
+    "GBD": BursttStation(
+        code="GBD",
+        latitude_deg=13.60091666667,
+        longitude_deg=77.42641666667,
+        elevation_m=750,
+        antenna_count=16,
+        antenna_rows=None,
+        antennas_per_row=None,
+        spacing_ew_m=None,
+        spacing_ns_m=None,
+        frequency_min_mhz=None,
+        frequency_max_mhz=None,
+        ew_width_deg=60,
+        ns_width_deg=90,
+        rotation_deg=None,
+        profile_note="GNSS CSV lists coordinates and 16 antennas; orientation and beam pattern are unspecified. The plotted FoV is schematic.",
+    ),
+    "PHL": BursttStation(
+        code="PHL",
+        latitude_deg=19.25011111111,
+        longitude_deg=-155.46827777778,
+        elevation_m=1760,
+        antenna_count=8,
+        antenna_rows=None,
+        antennas_per_row=None,
+        spacing_ew_m=None,
+        spacing_ns_m=None,
+        frequency_min_mhz=None,
+        frequency_max_mhz=None,
+        ew_width_deg=60,
+        ns_width_deg=90,
+        rotation_deg=None,
+        profile_note="Under construction. GNSS CSV lists coordinates and 8 antennas; orientation and beam pattern are unspecified. The plotted FoV is schematic.",
+    ),
+    "FUG": BursttStation(
+        code="FUG",
+        latitude_deg=25.29752777778,
+        longitude_deg=121.53788888889,
+        elevation_m=20,
+        antenna_count=16,
+        antenna_rows=None,
+        antennas_per_row=None,
+        spacing_ew_m=None,
+        spacing_ns_m=None,
+        frequency_min_mhz=None,
+        frequency_max_mhz=None,
+        ew_width_deg=60,
+        ns_width_deg=90,
+        rotation_deg=None,
+        profile_note="Inactive. GNSS CSV lists coordinates and 16 antennas; orientation and beam pattern are unspecified. The plotted FoV is schematic.",
     ),
 }

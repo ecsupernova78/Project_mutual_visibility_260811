@@ -15,10 +15,11 @@ export const DEFAULT_OBSERVING_SITES: ObserverLocation[] = [
   },
   {
     id: 'pyeongchang',
-    name: 'Pyeongchang (Kor)',
-    latitude_deg: 37.36889,
-    longitude_deg: 128.39028,
-    elevation_m: 700,
+    name: 'Pyeongchang (Kor) · PYC',
+    latitude_deg: BURSTT_STATIONS.PYC.latitude_deg,
+    longitude_deg: BURSTT_STATIONS.PYC.longitude_deg,
+    elevation_m: BURSTT_STATIONS.PYC.elevation_m,
+    burstt_station_code: 'PYC',
   },
   {
     id: 'fushan',
@@ -28,7 +29,7 @@ export const DEFAULT_OBSERVING_SITES: ObserverLocation[] = [
     elevation_m: BURSTT_STATIONS.FUS.elevation_m,
     burstt_station_code: 'FUS',
   },
-  ...(['LTN', 'GRN', 'KMN', 'OGW', 'PYC'] as const).map((code) => ({
+  ...(['LTN', 'GRN', 'KMN', 'OGW', 'GBD', 'PHL', 'FUG'] as const).map((code) => ({
     id: `burstt-${code.toLowerCase()}`,
     name: BURSTT_STATIONS[code].name,
     latitude_deg: BURSTT_STATIONS[code].latitude_deg,
@@ -49,7 +50,7 @@ export interface ObservingSiteState {
 }
 
 interface StoredObservingSiteState {
-  version: 1
+  version: 1 | 2 | 3
   locations: ObserverLocation[]
   selected_location_ids: string[]
 }
@@ -82,15 +83,20 @@ function isObserverLocation(value: unknown): value is ObserverLocation {
   )
 }
 
-function normalizedLocation(location: ObserverLocation): ObserverLocation {
-  const stationCode = stationCodeForLocation(location)
-  // A stored site without a station code predates this station registry. Only
-  // recognizable BURSTT sites are migrated to the surveyed JSON coordinates;
-  // subsequent user edits retain their values because they carry the code.
-  const surveyed = stationCode && !location.burstt_station_code ? BURSTT_STATIONS[stationCode] : null
+function normalizedLocation(location: ObserverLocation, migrateSurvey = false): ObserverLocation {
+  const presetCode = location.id === 'pyeongchang' ? 'PYC'
+    : DEFAULT_OBSERVING_SITES.find((preset) => preset.id === location.id)?.burstt_station_code
+  const surveyedCode = migrateSurvey && (
+    presetCode
+    || (isBursttStationCode(location.burstt_station_code) ? location.burstt_station_code : null)
+    || Object.values(BURSTT_STATIONS).find((station) => station.name === location.name.trim())?.code
+  )
+  const stationCode = surveyedCode || stationCodeForLocation(location)
+  // Migrate pre-GNSS profiles once, then preserve edits saved with version 3.
+  const surveyed = stationCode && migrateSurvey ? BURSTT_STATIONS[stationCode] : null
   return {
     id: location.id,
-    name: location.name.trim(),
+    name: surveyed && presetCode ? surveyed.name : location.name.trim(),
     latitude_deg: surveyed?.latitude_deg ?? location.latitude_deg,
     longitude_deg: surveyed?.longitude_deg ?? (location.longitude_deg === 180 ? -180 : location.longitude_deg),
     elevation_m: surveyed?.elevation_m ?? location.elevation_m,
@@ -121,7 +127,7 @@ export function loadObservingSiteState(storage?: Pick<Storage, 'getItem'>): Obse
   try {
     const parsed = JSON.parse(raw) as Partial<StoredObservingSiteState>
     if (
-      parsed.version !== 1
+      (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3)
       || !Array.isArray(parsed.locations)
       || parsed.locations.length > MAXIMUM_SAVED_SITES
       || !parsed.locations.every(isObserverLocation)
@@ -132,7 +138,14 @@ export function loadObservingSiteState(storage?: Pick<Storage, 'getItem'>): Obse
     const locationsById = new Map<string, ObserverLocation>()
     for (const location of parsed.locations) {
       if (locationsById.has(location.id)) return defaultState('invalid')
-      locationsById.set(location.id, normalizedLocation(location))
+      locationsById.set(location.id, normalizedLocation(location, parsed.version !== 3))
+    }
+
+    // The former generic Pyeongchang preset and separate PYC preset referred
+    // to the same station. Keep the stable selected 'pyeongchang' id.
+    const legacyPyc = locationsById.get('burstt-pyc')
+    if (legacyPyc && stationCodeForLocation(legacyPyc) === 'PYC') {
+      locationsById.delete('burstt-pyc')
     }
 
     const storedLocations = [...locationsById.values()]
@@ -157,7 +170,9 @@ export function loadObservingSiteState(storage?: Pick<Storage, 'getItem'>): Obse
 
     const availableIds = new Set(locations.map((location) => location.id))
     const selectedLocationIds = new Set(
-      [...new Set(parsed.selected_location_ids.filter((id) => availableIds.has(id)))]
+      [...new Set(parsed.selected_location_ids
+        .map((id) => id === 'burstt-pyc' ? 'pyeongchang' : id)
+        .filter((id) => availableIds.has(id)))]
         .slice(0, MAXIMUM_SELECTED_SITES),
     )
     return { locations, selectedLocationIds, storageStatus: 'valid' }
@@ -179,8 +194,8 @@ export function saveObservingSiteState(
 
   const availableIds = new Set(locations.map((location) => location.id))
   const payload: StoredObservingSiteState = {
-    version: 1,
-    locations: locations.map(normalizedLocation),
+    version: 3,
+    locations: locations.map((location) => normalizedLocation(location)),
     selected_location_ids: [...selectedLocationIds]
       .filter((id) => availableIds.has(id))
       .slice(0, MAXIMUM_SELECTED_SITES),
